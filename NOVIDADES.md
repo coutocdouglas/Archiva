@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.10.1
+- Tutoriais com textos novos, mais explicativos: uma introdução curta, os passos numerados de "Como fazer" e uma dica em destaque.
+- Diagramação mais espaçada e elegante no cartão do tutorial; a altura se ajusta ao conteúdo e a animação fica centralizada.
+
 ## 0.10.0
 - **Boas-vindas:** ao abrir, uma apresentação em 7 passos com animações mostra o essencial (biblioteca, busca, arrastar para o Max, extrair, Entrada, tags e trabalho em equipe). Marque "Não mostrar ao abrir" para desligar; dá para ligar de novo em Configurações › Uso.
 - **Aprender:** página nova no menu lateral com todos os tutoriais, separados por assunto. O que chegar em cada atualização aparece com o selo **Novo** e, depois de atualizar, o Archiva mostra só as novidades.
