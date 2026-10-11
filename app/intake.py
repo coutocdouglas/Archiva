@@ -162,6 +162,7 @@ class MoveResult:
     new_name: str = ""
     message: str = ""
     moved: list[str] = field(default_factory=list)
+    pairs: list = field(default_factory=list)       # (origem, destino) — para o histórico / desfazer
     left_behind: list[str] = field(default_factory=list)
 
 
@@ -217,10 +218,11 @@ def move_into(asset: Asset, dest_dir: str, new_name: str) -> MoveResult:
         return res
     res.ok = True
     res.moved = [d for _, d in done]
+    res.pairs = list(done)
     return res
 
 
-def discard(asset: Asset, library_root: str) -> str:
+def discard(asset: Asset, library_root: str, record: list | None = None) -> str:
     """Move todos os arquivos do item para _DESCARTADOS (apagado depois do prazo do backup)."""
     stamp = time.strftime("%Y%m%d-%H%M%S")
     dest = os.path.join(library_root, DISCARD_DIR, f"{stamp}__{asset.name}")
@@ -230,10 +232,13 @@ def discard(asset: Asset, library_root: str) -> str:
         i += 1
     os.makedirs(dest)
     for m in asset.members:
+        target = os.path.join(dest, os.path.basename(m))
         try:
-            os.rename(m, os.path.join(dest, os.path.basename(m)))
+            os.rename(m, target)
         except OSError:
-            shutil.move(m, os.path.join(dest, os.path.basename(m)))
+            shutil.move(m, target)
+        if record is not None:
+            record.append((m, target))
     return dest
 
 

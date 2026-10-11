@@ -2,6 +2,14 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.9.0
+- **Perfis:** na primeira abertura cada pessoa cria o seu perfil, com o nome que quiser e uma foto ou a inicial com cor. O perfil fica ligado ao computador e aparece no menu lateral (clique para editar).
+- **Biblioteca compartilhada (servidor):** várias pessoas podem usar a mesma biblioteca ao mesmo tempo. Tags, grupos, capas, novidades e nomes da Entrada são os mesmos para todos e se atualizam sozinhos a cada poucos segundos.
+- **Travas:** enquanto alguém extrai, organiza ou classifica um item, ele aparece "em uso · nome da pessoa" para os outros e os botões ficam bloqueados. Na Entrada, a categoria fica travada durante a numeração, para ninguém pegar o mesmo número. Se o programa de alguém fechar no meio, a trava some sozinha em cerca de 2 minutos.
+- **Histórico e desfazer:** toda alteração de arquivos (extrair, organizar, classificar, substituir, descartar, limpar) fica registrada com quem fez, de qual computador e quando. Cada pessoa vê e desfaz as próprias alterações (menu do perfil › Minhas alterações); o administrador vê e desfaz as de todos (Histórico de todos) e escolhe outros administradores (Pessoas e administradores).
+- A limpeza da revisão (V-Ray, FBX, OBJ) agora manda os arquivos para _DESCARTADOS em vez de apagar, então dá para desfazer até o prazo do backup.
+- Os dados compartilhados ficam numa pasta oculta _ARCHIVA dentro da biblioteca. As suas tags antigas são levadas para lá na primeira abertura.
+
 ## 0.8.0
 - Archiva agora tem instalador (Archiva-Setup.exe): instala sem pedir administrador, cria atalho no menu Iniciar e na Área de Trabalho e não precisa mais de Python.
 - Aviso de versão nova: ao abrir, o Archiva consulta o GitHub; se houver versão nova, aparece "Atualizar" no rodapé. Um clique baixa, instala e reabre.

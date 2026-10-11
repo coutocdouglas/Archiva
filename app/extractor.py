@@ -231,6 +231,8 @@ class ExtractResult:
     backup: str | None = None
     needs_password: bool = False
     used_password: str | None = None
+    moves: list = field(default_factory=list)       # (origem, destino) — para o histórico / desfazer
+    created: list = field(default_factory=list)     # pastas criadas
 
 
 def _unique(path: str) -> str:
@@ -377,6 +379,7 @@ def extract_to_library(asset: Asset, library_root: str, tools: dict[str, str],
         pass
     res.ok = True
     res.dest = final_dest
+    res.created.append(final_dest)
     res.max_files = find_max_files(final_dest, max_depth=0)
 
     # copia a prévia (que fica ao lado do compactado) para dentro da pasta, com o nome de cada .max
@@ -392,6 +395,7 @@ def extract_to_library(asset: Asset, library_root: str, tools: dict[str, str],
             os.replace(archive, target)
             os.utime(target, None)  # marca a hora em que entrou no backup
             res.backup = target
+            res.moves.append((archive, target))
         except OSError as e:
             res.warnings.append(f"Não consegui mover o compactado original para o backup ({e}). Ele continua no lugar.")
 
@@ -418,7 +422,7 @@ def organize_folder(asset: Asset, library_root: str, unwanted_ext: list[str]) ->
             raise RuntimeError("Nenhum arquivo .max na pasta. Nada foi alterado.")
         plan = layout.plan_layout(files, folder)
         res.warnings.extend(plan.warnings)
-        res.warnings.extend(layout.apply_in_place(folder, plan, junk))
+        res.warnings.extend(layout.apply_in_place(folder, plan, junk, res.moves))
     except Exception as e:  # noqa: BLE001
         res.message = f"{e} Nada foi alterado."
         if "Nada foi alterado" in str(e):
@@ -465,9 +469,13 @@ def clean_temp(library_root: str) -> None:
     """Remove sobras de extrações interrompidas (só dentro de _TEMP_EXTRACAO)."""
     root = os.path.join(library_root, TEMP_DIR)
     if os.path.isdir(root):
+        limit = time.time() - 12 * 3600     # na rede, outra pessoa pode estar extraindo agora: só sobras antigas
         for e in os.scandir(root):
-            if e.is_dir():
-                shutil.rmtree(e.path, ignore_errors=True)
+            try:
+                if e.is_dir() and e.stat().st_mtime < limit:
+                    shutil.rmtree(e.path, ignore_errors=True)
+            except OSError:
+                pass
         try:
             os.rmdir(root)
         except OSError:

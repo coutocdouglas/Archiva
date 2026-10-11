@@ -190,7 +190,7 @@ def check_layout(folder: str, outer_preview: str | None, unwanted_ext: set[str])
 
 # --------------------------------------------------------------------------- aplicar o plano dentro da própria pasta
 
-def apply_in_place(folder: str, plan: Plan, junk: list[str]) -> list[str]:
+def apply_in_place(folder: str, plan: Plan, junk: list[str], record: list | None = None) -> list[str]:
     """Move os arquivos para o padrão dentro da própria pasta, em duas fases (com volta em caso de erro)."""
     warnings: list[str] = []
     todo = [(s, r) for s, r in plan.moves if not _rel_is_same(s, folder, r)]
@@ -226,6 +226,8 @@ def apply_in_place(folder: str, plan: Plan, junk: list[str]) -> list[str]:
             pass
         raise
 
+    if record is not None:
+        record.extend(done)     # (de onde veio, onde ficou) — usado para desfazer
     for d in plan.duplicates:   # cópias idênticas (conferidas byte a byte)
         try:
             os.remove(d)

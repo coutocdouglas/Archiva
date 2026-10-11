@@ -352,18 +352,14 @@ class EntradaPage(QWidget):
         if not c:
             return
         from PySide6.QtWidgets import QInputDialog
-        cur = self.w.cfg["prefixes"].get(c.key) or intake.name_pattern(c, self.scope(c))[0] or intake.guess_prefix(c.name)
+        cur = self.w.prefix_for(c.key) or intake.name_pattern(c, self.scope(c))[0] or intake.guess_prefix(c.name)
         txt, ok = QInputDialog.getText(self, "Nome dos itens",
                                        f"Nome dos novos itens em {c.key.replace('/', ' › ')}\n"
                                        "(o número é colocado depois; deixe vazio para voltar ao automático):",
                                        text=cur)
         if not ok:
             return
-        if txt.strip():
-            self.w.cfg["prefixes"][c.key] = txt.strip()
-        else:
-            self.w.cfg["prefixes"].pop(c.key, None)
-        self.w.cfg.save()
+        self.w.set_prefix(c.key, txt.strip() or None)
         self._update_panel()
 
     def category(self) -> Category | None:
@@ -421,7 +417,7 @@ class EntradaPage(QWidget):
             self.sub.setText("Todos vão para a mesma categoria, em sequência.")
         if c:
             usable = [a for a in sel if a.kind != "missing"]
-            names = intake.next_names(c, max(1, len(usable)), self.w.cfg["prefixes"].get(c.key), self.scope(c))
+            names = intake.next_names(c, max(1, len(usable)), self.w.prefix_for(c.key), self.scope(c))
             txt = names[0] if len(names) == 1 else f"{names[0]}  …  {names[-1]}"
             self.new_name.setText(f"Vai ficar como: <b>{txt}</b>")
             if any(a.kind == "missing" for a in sel):
@@ -494,7 +490,7 @@ class EntradaPage(QWidget):
         c = self.category()
         if not sel or not c:
             return
-        prefix = self.w.cfg["prefixes"].get(c.key)
+        prefix = self.w.prefix_for(c.key)
         if not prefix and intake.name_pattern(c, self.scope(c))[0] is None:
             from PySide6.QtWidgets import QInputDialog
             txt, ok = QInputDialog.getText(self, "Categoria vazia",
@@ -504,8 +500,7 @@ class EntradaPage(QWidget):
             if not ok or not txt.strip():
                 return
             prefix = txt.strip()
-            self.w.cfg["prefixes"][c.key] = prefix
-            self.w.cfg.save()
+            self.w.set_prefix(c.key, prefix)
 
         # garante a verificação de repetidos antes de mover
         missing = [a for a in sel if a.preview and (a.key, c.key) not in self.similar]
@@ -519,6 +514,22 @@ class EntradaPage(QWidget):
                 QApplication.restoreOverrideCursor()
 
         top = self.top_of(c)
+        # trava a categoria (numeração) e os itens da Entrada: duas pessoas não pegam o mesmo número
+        cat_lock = f"cat:{top.key}"
+        got, busy = self.w.try_lock([cat_lock], "classificando nesta categoria")
+        if not got:
+            QMessageBox.information(self, "Em uso", "\n".join(busy) + "\n\nTente de novo em instantes.")
+            return
+        locked, busy_items = self.w.try_lock([a.key for a in sel], "classificando")
+        sel = [a for a in sel if a.key in locked]
+        try:
+            self._classify_locked(sel, c, top, prefix, busy_items)
+        finally:
+            for k in [cat_lock, *locked]:
+                self.w.shared.release(k)
+
+    def _classify_locked(self, sel, c, top, prefix, busy_items):
+        root = self.w.cfg["library_root"]
 
         def fresh_scan():   # numeração sempre lida do disco (categoria inteira, com subpastas)
             t = scan_category(top.path, top.key, top.name, check_layout=False)
@@ -531,7 +542,7 @@ class EntradaPage(QWidget):
             return (found or t), t.all_assets()
 
         fresh, fresh_scope = fresh_scan()
-        added, replaced, discarded, errors = [], [], 0, []
+        added, replaced, discarded, errors = [], [], 0, list(busy_items)
         for a in sel:
             matches = self.similar.get((a.key, c.key)) or []
             choice, existing = DuplicateDialog.KEEP_BOTH, None
@@ -544,17 +555,22 @@ class EntradaPage(QWidget):
                 continue
             try:
                 if choice == DuplicateDialog.KEEP_OLD:
-                    intake.discard(a, self.w.cfg["library_root"])
+                    rec = []
+                    intake.discard(a, root, rec)
+                    self.w.log_op("descartar", "_ENTRADA", a.key, f"{a.name} (repetido de item da biblioteca)", rec)
                     discarded += 1
                     continue
                 if choice == DuplicateDialog.KEEP_NEW and existing is not None:
                     name = existing.name
                     dest = os.path.dirname(existing.members[0]) if existing.members else c.path
-                    trash = intake.discard(existing, self.w.cfg["library_root"])
+                    rec = []
+                    trash = intake.discard(existing, root, rec)
                     r = intake.move_into(a, dest, name)
                     if r.ok:
                         replaced.append(name)
                         self.w.db.add_addition(existing.key, a.name)
+                        self.w.log_op("substituir", c.key, existing.key, f"{name} pela versão nova ({a.name})",
+                                      rec + r.pairs)
                     else:
                         intake.restore(trash, dest)   # devolve o existente
                         errors.append(f"{a.name}: {r.message}")
@@ -564,6 +580,7 @@ class EntradaPage(QWidget):
                 if r.ok:
                     added.append(name)
                     self.w.db.add_addition(f"{c.key}/{name}", a.name)
+                    self.w.log_op("classificar", c.key, f"{c.key}/{name}", f"{a.name} → {name}", r.pairs)
                     fresh, fresh_scope = fresh_scan()
                     if r.left_behind:
                         errors.append(f"{a.name}: imagens extras ficaram na Entrada "
@@ -594,11 +611,23 @@ class EntradaPage(QWidget):
                                 f"Descartar {len(sel)} item(ns) da Entrada?\n\nEles vão para _DESCARTADOS e são "
                                 "apagados depois do prazo do backup.") != QMessageBox.Yes:
             return
-        for a in sel:
-            try:
-                intake.discard(a, self.w.cfg["library_root"])
-            except OSError as e:
-                QMessageBox.warning(self, "Descartar", f"{a.name}: {e}")
+        locked, busy = self.w.try_lock([a.key for a in sel], "descartando")
+        try:
+            for a in sel:
+                if a.key not in locked:
+                    continue
+                rec = []
+                try:
+                    intake.discard(a, self.w.cfg["library_root"], rec)
+                except OSError as e:
+                    QMessageBox.warning(self, "Descartar", f"{a.name}: {e}")
+                if rec:
+                    self.w.log_op("descartar", "_ENTRADA", a.key, a.name, rec)
+        finally:
+            for k in locked:
+                self.w.shared.release(k)
+        if busy:
+            QMessageBox.information(self, "Em uso", "\n".join(busy))
         self.refresh()
 
     def _reveal(self):

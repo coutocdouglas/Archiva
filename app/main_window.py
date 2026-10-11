@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 from PySide6.QtCore import (QAbstractListModel, QByteArray, QModelIndex, QMimeData, QPoint, QPointF, QRect, QRectF,
@@ -19,7 +20,8 @@ from PySide6.QtWidgets import (QTreeWidgetItemIterator, QAbstractItemView, QAppl
 
 from . import extractor, intake
 from .config import APP_NAME, Config, app_dir, is_installed, version
-from . import atualizador
+from . import atualizador, perfil, rede
+from .compartilhado import OP_NAMES, Compartilhado
 from .database import TagDB, clean_tag
 from .maxscript import write_merge_script
 from . import scanner as scanner_mod
@@ -181,7 +183,8 @@ class CardDelegate(QStyledItemDelegate):
             p.fillPath(pp, QColor(30, 20, 14, 205))
             p.setPen(QColor("#cdb7ff") if label == "organizar" else theme.LOGO)
             p.drawText(pill, Qt.AlignCenter, label)
-        if busy or queued:
+        lock = self.w.shared.lock_of(a.key) if not (busy or queued) else None
+        if busy or queued or lock:
             band = QRectF(img.left(), img.bottom() - 22, img.width(), 22)
             bp = QPainterPath()
             bp.addRoundedRect(band, 0, 0)
@@ -191,7 +194,8 @@ class CardDelegate(QStyledItemDelegate):
             p.restore()
             p.setPen(theme.TEXT)
             p.setFont(theme.ui_font(8.5))
-            p.drawText(band, Qt.AlignCenter, "extraindo…" if busy else "na fila")
+            txt = (f"em uso · {lock.get('nome', '?')}" if lock else ("extraindo…" if busy else "na fila"))
+            p.drawText(band, Qt.AlignCenter, QFontMetrics(p.font()).elidedText(txt, Qt.ElideRight, int(band.width() - 10)))
 
         # nome + situação
         ntags = len(self.w.db.tags_of(a.key)) if not a.key.startswith("_ENTRADA") else 0
@@ -469,10 +473,13 @@ class DetailsPanel(QWidget):
             it.setData(Qt.UserRole, t)
             self.tag_list.addItem(it)
         self.tag_list.setVisible(bool(tags))
+        free = [a for a in a_list if not self.w.shared.lock_of(a.key)]
+        if len(a_list) == 1 and not free:
+            self.hint.setText(f"Em uso: {self.w.lock_text(a_list[0].key)}. Os botões voltam quando terminar.")
         can_prepare = any(a.kind == "archive" and not self.w.extractions.is_queued(a)
-                          and not self.w.extractions.is_running(a) for a in a_list)
+                          and not self.w.extractions.is_running(a) for a in free)
         can_org = any(self.w.layout_issues(a) and not self.w.extractions.is_running(a)
-                      and not self.w.extractions.is_queued(a) for a in a_list)
+                      and not self.w.extractions.is_queued(a) for a in free)
         self.btn_prepare.setVisible(can_prepare)
         self.btn_organize.setVisible(can_org)
         self.btn_open.setVisible(True)
@@ -748,7 +755,11 @@ class MainWindow(FramelessMixin, QMainWindow):
         super().__init__()
         self.cfg = Config()
         self.cache_root = self.cfg.cache_dir
-        self.db = TagDB(self.cfg.db_path)
+        self.db = TagDB(None)              # aberto de verdade quando a biblioteca é escolhida
+        self.shared = Compartilhado(self.db)
+        self.profile = perfil.load()
+        self._bound_root = None
+        self._ops: dict[str, str] = {}     # item -> "extrair" | "organizar" (para o histórico)
         self.tools = extractor.find_tool(self.cfg["unrar_path"])
         self.thumb_size = int(self.cfg["thumb_size"])
         self.categories: list[Category] = []
@@ -932,6 +943,14 @@ class MainWindow(FramelessMixin, QMainWindow):
                                    ("tags", "Tags", "tags"), ("entrada", "Entrada", "entrada")])
         self.sidebar.navigate.connect(lambda k: self.tabs.setCurrentWidget(self.tabs.page(k)))
         self.sidebar.settings.clicked.connect(self.open_settings)
+        self.user_chip = perfil.UserChip()
+        self.user_chip.clicked.connect(self._user_menu)
+        lay = self.sidebar.layout()
+        lay.insertWidget(lay.indexOf(self.sidebar.settings), self.user_chip)
+        self._update_user_chip()
+        self.shared.tags_changed.connect(self._on_shared_tags)
+        self.shared.items_changed.connect(self._on_shared_items)
+        self.shared.locks_changed.connect(self._on_locks_changed)
         self.entrada.count_changed.connect(lambda n: self.sidebar.buttons["entrada"].set_badge(n))
         self.tabs.currentChanged.connect(self._on_tab)
         self._update_footer()
@@ -1090,10 +1109,25 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.cfg.save()
         self.thumbs.cancel_pending()
         self.entrada.shutdown()
+        self.shared.unbind()
         super().closeEvent(e)
 
     # ----------------------------------------------------------------- leitura
+    def ensure_profile(self) -> dict:
+        while not self.profile:
+            d = perfil.ProfileDialog(self, first=True)
+            if d.exec() == QDialog.Accepted:
+                self.profile = d.result_profile()
+            else:   # fechou sem preencher: usa o nome do computador (pode trocar depois)
+                import uuid
+                self.profile = {"id": uuid.uuid4().hex, "nome": perfil.computer_name(), "cor": perfil.CORES[0],
+                                "foto": False, "pc": perfil.computer_name()}
+                perfil.save(self.profile)
+        self._update_user_chip()
+        return self.profile
+
     def start_scan(self):
+        self.ensure_profile()
         root = self.cfg["library_root"]
         if not root or not os.path.isdir(root):
             if not getattr(self, "_welcomed", False):
@@ -1105,12 +1139,11 @@ class MainWindow(FramelessMixin, QMainWindow):
                     m.setInformativeText(f"{root}<br><br>O disco pode estar desconectado. Escolha a pasta de novo "
                                          "ou feche e conecte o disco.")
                 else:
-                    m.setText("<b>Bem-vindo ao Archiva</b>")
-                    m.setInformativeText("Escolha a pasta onde ficam os seus modelos 3D, aquela com uma pasta por "
-                                         "categoria (ex.: ADORNOS, CADEIRAS, LUMINARIAS…).<br><br>"
-                                         "Nada nela é alterado sem você pedir (extrair, organizar, classificar). "
-                                         "Tags e configurações ficam guardadas só neste computador, para este "
-                                         "usuário.")
+                    m.setText(f"<b>Olá, {self.profile.get('nome', '')}</b>")
+                    m.setInformativeText("Agora escolha a pasta da biblioteca de modelos 3D, aquela com uma pasta "
+                                         "por categoria (ex.: ADORNOS, CADEIRAS, LUMINARIAS…). Pode ser no seu "
+                                         "computador ou no servidor (ex.: \\\\SERVIDOR\\MODELOS).<br><br>"
+                                         "Nada nela é alterado sem você pedir (extrair, organizar, classificar).")
                 ui.primary(m.addButton("Escolher pasta…", QMessageBox.AcceptRole))
                 m.addButton("Agora não", QMessageBox.RejectRole)
                 m.exec()
@@ -1125,6 +1158,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             root = self.cfg["library_root"]
         if getattr(self, "_scan", None) and self._scan.isRunning():
             return
+        if self._bound_root != root:
+            self._bind_library(root)
         self.progress.setRange(0, 0)
         self.progress.show()
         self.statusBar().showMessage(f"Lendo {root}…")
@@ -1134,6 +1169,132 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._scan.done.connect(self._on_scanned)
         self._scan.failed.connect(lambda m: QMessageBox.warning(self, "Erro ao ler biblioteca", m))
         self._scan.start()
+
+    def _bind_library(self, root: str):
+        self.statusBar().showMessage("Lendo tags e histórico da biblioteca…")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            ok = self.shared.bind(root, self.profile)
+            if ok and not self.db.prefixes() and self.cfg["prefixes"]:
+                for k, v in dict(self.cfg["prefixes"]).items():   # nomes da Entrada passam a valer para todos
+                    self.db.set_prefix(k, v)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._bound_root = root
+        self._update_user_chip()
+        if not ok:
+            QMessageBox.warning(self, "Biblioteca", self.shared.error + "\n\nAs tags ficam só neste computador "
+                                "até a pasta poder ser gravada.")
+        if self.shared.offer_old_tags:
+            QTimer.singleShot(800, self._offer_old_tags)
+
+    def _offer_old_tags(self):
+        if QMessageBox.question(self, "Tags", "Esta biblioteca já tem tags de outras pessoas.\n\nQuer juntar a elas "
+                                "as tags que você tinha neste computador?") == QMessageBox.Yes:
+            n = self.shared.import_old_tags()
+            self._on_shared_tags()
+            self.statusBar().showMessage(f"Tags de {n} marcação(ões) juntadas à biblioteca.", 8000)
+        else:
+            self.shared.offer_old_tags = False
+
+    # ----------------------------------------------------------------- pessoas / compartilhamento
+    def prefix_for(self, cat_key: str) -> str | None:
+        return self.db.prefixes().get(cat_key)
+
+    def set_prefix(self, cat_key: str, prefix: str | None) -> None:
+        self.db.set_prefix(cat_key, prefix)
+
+    def is_admin(self) -> bool:
+        return bool(self.shared.lib and self.shared.lib.is_admin())
+
+    def _update_user_chip(self):
+        if not hasattr(self, "user_chip"):
+            return
+        if not self.profile:
+            self.user_chip.setVisible(False)
+            return
+        self.user_chip.setVisible(True)
+        self.user_chip.set_user(self.profile, "administrador" if self.is_admin() else "")
+
+    def _user_menu(self):
+        m = QMenu(self)
+        m.addAction("Editar perfil…", self.edit_profile)
+        m.addSeparator()
+        m.addAction("Minhas alterações…", lambda: self.open_history(False))
+        if self.is_admin():
+            m.addAction("Histórico de todos…", lambda: self.open_history(True))
+            m.addAction("Pessoas e administradores…", self.open_people)
+        m.exec(self.user_chip.mapToGlobal(QPoint(8, -m.sizeHint().height() - 4)))
+
+    def edit_profile(self):
+        d = perfil.ProfileDialog(self, self.profile)
+        if d.exec() == QDialog.Accepted:
+            self.profile = d.result_profile()
+            if self.shared.lib:
+                try:
+                    self.shared.lib.publish_profile(self.profile, perfil.avatar_png_bytes(self.profile))
+                    self.shared.profile = self.profile
+                except OSError:
+                    pass
+            self._update_user_chip()
+
+    def open_history(self, everyone: bool):
+        if not self.shared.active:
+            QMessageBox.information(self, "Histórico", "Escolha a biblioteca primeiro.")
+            return
+        from .historico import HistoryDialog
+        HistoryDialog(self, everyone).exec()
+
+    def open_people(self):
+        from .historico import PeopleDialog
+        PeopleDialog(self).exec()
+        self._update_user_chip()
+
+    def _on_shared_tags(self):
+        self._rebuild_search_text()
+        self._fill_tag_filter()
+        self.details.update_completer()
+        self.details.refresh()
+        self.grid.viewport().update()
+        for page in (getattr(self, "home", None), getattr(self, "tags_page", None)):
+            if page is not None and hasattr(page, "refresh"):
+                try:
+                    page.refresh()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _on_shared_items(self, cats: list):
+        if getattr(self, "_scan", None) and self._scan.isRunning():
+            return
+        for c in cats:
+            self.refresh_category(c)
+        self.entrada.refresh()
+
+    def _on_locks_changed(self):
+        self.grid.viewport().update()
+        self.details.refresh()
+        if hasattr(self.entrada, "grid"):
+            self.entrada.grid.viewport().update()
+
+    def lock_text(self, key: str) -> str:
+        info = self.shared.lock_of(key)
+        if not info:
+            return ""
+        return f"{info.get('nome', '?')} está {info.get('op', 'mexendo')}"
+
+    def try_lock(self, keys: list[str], op: str) -> tuple[list[str], list[str]]:
+        """Trava cada chave; devolve (travadas, mensagens de quem já está usando)."""
+        got, busy = [], []
+        for k in keys:
+            ok, info = self.shared.acquire(k, op)
+            if ok:
+                got.append(k)
+            else:
+                busy.append(f"{k.split('/')[-1]}: {info.get('nome', '?')} está {info.get('op', 'mexendo')} agora")
+        return got, busy
+
+    def log_op(self, *a, **kw):
+        return self.shared.log_op(*a, **kw)
 
     def _on_scanned(self, cats: list[Category]):
         self.progress.hide()
@@ -1331,8 +1492,15 @@ class MainWindow(FramelessMixin, QMainWindow):
                     f"Cada um vira uma pasta com o .max e a pasta MAPS, ao lado da prévia.\n{keep}\n\n"
                     "Você pode continuar usando o programa enquanto extrai.") != QMessageBox.Yes:
                 return
+        locked, busy = self.try_lock([a.key for a in todo], "extraindo")
+        todo = [a for a in todo if a.key in locked]
+        for a in todo:
+            self._ops[a.key] = "extrair"
         n = self.extractions.enqueue(todo)
         self.statusBar().showMessage(f"{n} item(ns) na fila de extração.")
+        if busy:
+            QMessageBox.information(self, "Em uso", "Estes itens estão sendo alterados por outra pessoa:\n\n"
+                                    + "\n".join(busy))
         for a in todo:
             self.model.refresh_key(a.key)
         self.details.refresh()
@@ -1351,8 +1519,15 @@ class MainWindow(FramelessMixin, QMainWindow):
                     "• cópias idênticas de arquivos são removidas\n\n"
                     "No fim, você revisa o que pode ser apagado (V-Ray, FBX, OBJ).") != QMessageBox.Yes:
                 return
+        locked, busy = self.try_lock([a.key for a in todo], "organizando")
+        todo = [a for a in todo if a.key in locked]
+        for a in todo:
+            self._ops[a.key] = "organizar"
         n = self.extractions.enqueue(todo, op="organize")
         self.statusBar().showMessage(f"{n} pasta(s) na fila para organizar.")
+        if busy:
+            QMessageBox.information(self, "Em uso", "Estas pastas estão sendo alteradas por outra pessoa:\n\n"
+                                    + "\n".join(busy))
         for a in todo:
             self.model.refresh_key(a.key)
         self.details.refresh()
@@ -1372,6 +1547,11 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.passwords.insert(0, res.used_password)  # senha nova que funcionou: guarda para os próximos
             self.cfg.save()
         self._pwd_tries.pop(res.key, None)
+        op = self._ops.pop(res.key, "extrair")
+        if res.ok:
+            extra = {"base": rede.rel(self.cfg["library_root"], res.dest)} if op == "organizar" and res.dest else None
+            self.log_op(op, res.category, res.key, res.name, res.moves, res.created, extra)
+        self.shared.release(res.key)
         if res.ok:
             self.refresh_category(res.category.split("/")[0])
             self.statusBar().showMessage(f"{res.name} pronto.", 4000)
@@ -1773,19 +1953,30 @@ class ReviewDialog(QDialog):
     def _apply(self):
         self._remember_kept()
         removed, errors, cats = 0, [], set()
+        root = self.w.cfg["library_root"]
+        bucket = os.path.join(root, intake.DISCARD_DIR, time.strftime("%Y%m%d-%H%M%S") + "__limpeza")
+        per_item: dict[str, list] = {}
+
+        def discard(path, key):     # vai para _DESCARTADOS (dá para desfazer até o prazo do backup)
+            dst = os.path.join(bucket, os.path.relpath(path, root))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.replace(path, dst)
+            per_item.setdefault(key or os.path.dirname(path), []).append((path, dst))
+
         for it in self.checks:
             if it.checkState(0) != Qt.Checked:
                 continue
             p = it.data(0, Qt.UserRole)
+            key = it.data(0, Qt.UserRole + 1)
             try:
-                os.remove(p)
+                discard(p, key)
                 removed += 1
                 if p.lower().endswith(".max"):  # leva junto a imagem com o mesmo nome do .max apagado
                     stem = os.path.splitext(p)[0]
                     for e in (".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"):
                         if os.path.exists(stem + e):
                             try:
-                                os.remove(stem + e)
+                                discard(stem + e, key)
                             except OSError:
                                 pass
                 d = os.path.dirname(p)
@@ -1798,6 +1989,9 @@ class ReviewDialog(QDialog):
                 cats.add(os.path.relpath(p, self.w.cfg["library_root"]).split(os.sep)[0])
             except OSError as e:
                 errors.append(f"{os.path.basename(p)}: {e}")
+        for key, moves in per_item.items():
+            cat = key.rsplit("/", 1)[0] if "/" in key else ""
+            self.w.log_op("limpar", cat, key, f"{key.split('/')[-1]} ({len(moves)} arquivo(s))", moves)
         for c in cats:
             self.w.refresh_category(c)
         if errors:

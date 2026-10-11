@@ -1,4 +1,4 @@
-ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.8.0
+ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.9.0
 =====================================================================
 
 O QUE O PROGRAMA ALTERA NA BIBLIOTECA
@@ -27,6 +27,23 @@ INSTALACAO
      Executar assim mesmo (o instalador nao tem assinatura paga).
   Configuracoes, tags e miniaturas continuam as mesmas da versao antiga.
   A pasta _GERENCIADOR em F:\MODELOS pode ficar ou ser apagada depois.
+
+PERFIL E USO EM REDE (a partir da 0.9)
+  - Na primeira abertura voce cria o seu perfil (nome, foto ou inicial).
+    Ele fica ligado a este computador. Clique nele no menu lateral para
+    editar, ver as suas alteracoes ou (administrador) o historico de todos.
+  - A biblioteca pode ficar num servidor (ex.: \\SERVIDOR\MODELOS). Cada
+    pessoa aponta para ela em Configuracoes > Biblioteca.
+  - Tags, grupos, capas e nomes da Entrada sao os mesmos para todos.
+  - Item sendo alterado por outra pessoa aparece "em uso" e fica
+    bloqueado ate ela terminar.
+  - Historico: tudo que mexe em arquivos fica registrado (quem, computador,
+    quando) e pode ser desfeito enquanto ninguem mexeu nos arquivos depois.
+  - Quem cria o primeiro perfil numa biblioteca vira administrador.
+  - Os dados compartilhados ficam na pasta oculta _ARCHIVA dentro da
+    biblioteca. NAO apague essa pasta.
+  - Use o mesmo prazo de backup em todos os computadores: o menor prazo
+    e o que vale (o desfazer de extracoes depende do backup).
 
 ATUALIZACOES
   Ao abrir, o Archiva consulta o GitHub. Se houver versao nova, aparece
