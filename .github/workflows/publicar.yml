@@ -11,7 +11,7 @@ name: Publicar versão
 on:
   push:
     branches: [main]
-    paths: [VERSION]
+    paths: [VERSION, .github/workflows/publicar.yml, empacotamento/**]
   workflow_dispatch:
 
 permissions:
