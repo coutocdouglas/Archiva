@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.10.2
+- O cartão dos tutoriais agora tem o mesmo tamanho em todos os passos (o do texto mais longo do grupo): a moldura e os botões não mudam de lugar ao avançar, e a dica fica sempre no rodapé.
+
 ## 0.10.1
 - Tutoriais com textos novos, mais explicativos: uma introdução curta, os passos numerados de "Como fazer" e uma dica em destaque.
 - Diagramação mais espaçada e elegante no cartão do tutorial; a altura se ajusta ao conteúdo e a animação fica centralizada.

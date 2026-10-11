@@ -367,6 +367,11 @@ class TutorialOverlay(QWidget):
         bottom.addWidget(self.next)
         outer.addLayout(bottom)
 
+        # altura fixa para o conjunto: a do tutorial mais longo (o cartão não muda de tamanho ao avançar)
+        self._col_h = 0
+        for tid in self.ids:
+            self._fill_text(BY_ID[tid])
+            self._col_h = max(self._col_h, self._text_height())
         host.installEventFilter(self)
         self.setGeometry(host.rect())
         self.go(self.i)
@@ -417,9 +422,14 @@ class TutorialOverlay(QWidget):
             self.col.addSpacing(14)
         if t.get("dica"):
             self.col.addSpacing(10)
+            self.col.addStretch(1)          # sobra de espaço fica entre os passos e a dica (dica no rodapé)
             self.col.addWidget(_Tip(t["dica"]))
         for wdg in self.textcol.findChildren(QWidget):     # aplica fonte/estilo antes de medir a altura
             wdg.ensurePolished()
+
+    def _text_height(self) -> int:
+        self.col.invalidate()
+        return self.col.totalHeightForWidth(TEXT_W) if self.col.hasHeightForWidth() else self.col.sizeHint().height()
 
     def _place(self):
         if not self.width():
@@ -428,8 +438,8 @@ class TutorialOverlay(QWidget):
         aw = cw - 40 - 36 - 46 - TEXT_W
         self.anim.setFixedSize(aw, int(aw / 1.6))
         self.card.setFixedWidth(cw)
-        self.col.invalidate()
-        col_h = self.col.totalHeightForWidth(TEXT_W) if self.col.hasHeightForWidth() else self.col.sizeHint().height()
+        col_h = self._col_h or self._text_height()
+        self.textcol.setFixedHeight(col_h)
         bottom_h = max(self.next.sizeHint().height(), 34)
         h = 28 + 34 + 24 + max(self.anim.height(), col_h) + 24 + bottom_h + 30
         self.card.setFixedHeight(min(h, self.height() - 40))
