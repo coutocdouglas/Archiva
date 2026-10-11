@@ -18,8 +18,8 @@ só é alterada quando você usa as ações de extrair/organizar.
 
 ## Lançar uma versão nova
 1. Atualize `VERSION` e acrescente a seção da versão em `NOVIDADES.md`.
-2. `git commit -am "Archiva 0.8.1"` · `git tag v0.8.1` · `git push --follow-tags`
-3. A ação **Publicar versão** monta o instalador no GitHub e publica em Releases.
+2. `git commit -am "Archiva 0.8.1"` · `git push`
+3. A ação **Publicar versão** monta o instalador, cria a tag `v0.8.1` e publica em Releases.
 
 ## Rodar pelo código (desenvolvimento)
 ```

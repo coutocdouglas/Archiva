@@ -1,17 +1,17 @@
 # Monta o instalador do Archiva e publica uma versão no GitHub.
 #
-# Para lançar uma versão nova:
-#   1. atualize o arquivo VERSION (ex.: 0.8.1) e o NOVIDADES.md
-#   2. git commit e git tag v0.8.1  →  git push --follow-tags
-# O GitHub monta o Archiva-Setup-0.8.1.exe e publica em Releases; o Archiva instalado avisa sozinho.
+# Para lançar uma versão nova: mude o arquivo VERSION (ex.: 0.8.1), acrescente a seção no NOVIDADES.md
+# e envie para a branch main. Se ainda não existir a versão v0.8.1 em Releases, o GitHub monta o
+# Archiva-Setup-0.8.1.exe, cria a tag e publica; o Archiva instalado avisa sozinho.
 #
-# "Run workflow" (manual) só monta e guarda o instalador para teste, sem publicar.
+# "Run workflow" (manual) monta o instalador; publica só se a versão ainda não existir.
 
 name: Publicar versão
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: [VERSION]
   workflow_dispatch:
 
 permissions:
@@ -30,12 +30,15 @@ jobs:
       - name: Conferir versão
         id: ver
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $v = (Get-Content VERSION -Raw).Trim()
-          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$v") {
-            Write-Error "A tag ${{ github.ref_name }} não bate com o arquivo VERSION ($v)."; exit 1
-          }
           "versao=$v" >> $env:GITHUB_OUTPUT
+          gh release view "v$v" -R "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { "publicar=nao" >> $env:GITHUB_OUTPUT; Write-Host "v$v já publicada." }
+          else { "publicar=sim" >> $env:GITHUB_OUTPUT }
+          $global:LASTEXITCODE = 0
 
       - name: Instalar dependências
         run: |
@@ -63,22 +66,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Guardar instalador (teste)
-        if: github.ref_type != 'tag'
+        if: steps.ver.outputs.publicar != 'sim'
         uses: actions/upload-artifact@v4
         with:
           name: Archiva-Setup-${{ steps.ver.outputs.versao }}
           path: saida/*.exe
 
       - name: Notas da versão
-        if: github.ref_type == 'tag'
+        if: steps.ver.outputs.publicar == 'sim'
         shell: pwsh
         run: |
           python empacotamento\notas.py ${{ steps.ver.outputs.versao }} > notas.txt
 
       - name: Publicar no GitHub
-        if: github.ref_type == 'tag'
+        if: steps.ver.outputs.publicar == 'sim'
         uses: softprops/action-gh-release@v2
         with:
           name: Archiva ${{ steps.ver.outputs.versao }}
+          tag_name: v${{ steps.ver.outputs.versao }}
+          target_commitish: ${{ github.sha }}
           body_path: notas.txt
           files: saida/Archiva-Setup-${{ steps.ver.outputs.versao }}.exe
