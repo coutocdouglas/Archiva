@@ -61,6 +61,9 @@ DEFAULTS = {
     "check_updates": True,        # procura versão nova no GitHub ao abrir
     "github_token": "",           # só se o repositório for privado (token só de leitura)
     "skip_version": "",           # versão que o usuário mandou ignorar
+    "tutorial_off": False,        # boas-vindas ao abrir desligadas
+    "tutoriais_vistos": [],
+    "versao_vista": "",           # última versão aberta (para mostrar as novidades)
     "window_geometry": "",
     "splitter_state": "",
 }

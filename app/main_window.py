@@ -22,6 +22,7 @@ from . import extractor, intake
 from .config import APP_NAME, Config, app_dir, is_installed, version
 from . import atualizador, perfil, rede
 from .compartilhado import OP_NAMES, Compartilhado
+from . import tutoriais
 from .database import TagDB, clean_tag
 from .maxscript import write_merge_script
 from . import scanner as scanner_mod
@@ -587,6 +588,9 @@ class SettingsDialog(QDialog):
         self.titlebar.addItem("Barra padrão do Windows", "windows")
         self.titlebar.setCurrentIndex(0 if window.cfg["titlebar"] != "windows" else 1)
         form.addRow("Barra de título", self.titlebar)
+        self.intro = QCheckBox("Mostrar as boas-vindas ao abrir o Archiva")
+        self.intro.setChecked(not window.cfg["tutorial_off"])
+        form.addRow("Tutorial", self.intro)
         form.addRow("", QLabel(f"<span style='color:{theme.FAINT.name()}'>A barra de título muda ao abrir o "
                                "programa de novo.</span>"))
 
@@ -939,8 +943,12 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.tabs.add(self.tags_page, "tags", "Tags")
         self.entrada = EntradaPage(self)
         self.tabs.add(self.entrada, "entrada", "Entrada")
+        self.aprender = tutoriais.AprenderPage(self)
+        self.aprender.open_tutorial.connect(self.show_tutorial)
+        self.tabs.add(self.aprender, "aprender", "Aprender")
         self.sidebar = ui.Sidebar([("inicio", "Início", "inicio"), ("biblioteca", "Biblioteca", "biblioteca"),
-                                   ("tags", "Tags", "tags"), ("entrada", "Entrada", "entrada")])
+                                   ("tags", "Tags", "tags"), ("entrada", "Entrada", "entrada"),
+                                   ("aprender", "Aprender", "aprender")])
         self.sidebar.navigate.connect(lambda k: self.tabs.setCurrentWidget(self.tabs.page(k)))
         self.sidebar.settings.clicked.connect(self.open_settings)
         self.user_chip = perfil.UserChip()
@@ -1330,6 +1338,64 @@ class MainWindow(FramelessMixin, QMainWindow):
             + (f"  ·  {n_layout} fora do padrão" if n_layout else "")
             + (f"  ·  {n_issue} com problema" if n_issue else ""))
         self.apply_filter()
+        if not getattr(self, "_intro_done", False):
+            self._intro_done = True
+            QTimer.singleShot(500, self._intro)
+
+    # ----------------------------------------------------------------- tutoriais
+    def _intro(self):
+        """Boas-vindas (até a pessoa desligar) ou, depois de atualizar, só o que é novo."""
+        last = self.cfg["versao_vista"]
+        cur = version()
+        self.cfg["versao_vista"] = cur
+        self._update_learn_badge()
+        if not self.cfg["tutorial_off"]:
+            self.show_onboarding()
+        elif last and last != cur:
+            novos = [t["id"] for t in tutoriais.newer_than(last)]
+            if novos:
+                self._overlay(novos, f"Novidades da versão {cur}")
+            else:
+                self.statusBar().showMessage(f"Archiva atualizado para a versão {cur}.", 8000)
+
+    def _overlay(self, ids, kicker, optout=False, start=0):
+        old = getattr(self, "_tut", None)
+        if old is not None:
+            try:
+                old.finish()
+            except RuntimeError:
+                pass
+        ov = tutoriais.TutorialOverlay(self.centralWidget(), ids, kicker, show_optout=optout,
+                                       optout_checked=True, start=start)
+        ov.viewed.connect(self._mark_viewed)
+        if optout:
+            ov.closed.connect(lambda: self.cfg.__setitem__("tutorial_off", ov.optout.isChecked()))
+        self.caption.raise_()
+        self._tut = ov
+        return ov
+
+    def show_onboarding(self, manual: bool = False):
+        self._overlay(tutoriais.BOAS_VINDAS, "Boas-vindas ao Archiva", optout=not manual)
+
+    def show_tutorial(self, tid: str):
+        t = tutoriais.BY_ID.get(tid)
+        if not t:
+            return
+        ids = [x["id"] for x in tutoriais.TUTORIAIS if x["grupo"] == t["grupo"]]
+        self._overlay(ids, t["grupo"], start=ids.index(tid))
+
+    def _mark_viewed(self, tid: str):
+        seen = list(self.cfg["tutoriais_vistos"] or [])
+        if tid not in seen:
+            seen.append(tid)
+            self.cfg["tutoriais_vistos"] = seen
+            self._update_learn_badge()
+            self.aprender.refresh()
+
+    def _update_learn_badge(self):
+        seen = list(self.cfg["tutoriais_vistos"] or [])
+        n = sum(1 for t in tutoriais.TUTORIAIS if tutoriais.is_new(t, version(), seen))
+        self.sidebar.buttons["aprender"].set_badge(n)
 
     def _rebuild_search_text(self, assets=None):
         for a in (assets or self.all_assets):
@@ -1638,11 +1704,14 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.tags_page.refresh()
 
     def _tree_item(self, key):
-        it = QTreeWidgetItemIterator(self.cat_tree)
-        while it.value():
-            if it.value().data(0, Qt.UserRole) == key:
-                return it.value()
-            it += 1
+        # sem QTreeWidgetItemIterator: no PySide6 ele deixava a árvore instável e o programa fechava
+        # ao recriar a lista de categorias (depois de extrair/classificar)
+        stack = [self.cat_tree.topLevelItem(i) for i in range(self.cat_tree.topLevelItemCount())]
+        while stack:
+            item = stack.pop(0)
+            if item.data(0, Qt.UserRole) == key:
+                return item
+            stack[:0] = [item.child(i) for i in range(item.childCount())]
         return None
 
     def open_library(self, mode: str = "all", cat_key: str | None = None, tag: str | None = None,
@@ -1840,6 +1909,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.cfg.values["drag_mode"] = d.drag.currentData()
         self.cfg.values["thumb_size"] = self.thumb_size
         self.cfg.values["titlebar"] = d.titlebar.currentData()
+        self.cfg.values["tutorial_off"] = not d.intro.isChecked()
         self.cfg.values["check_updates"] = d.check_upd.isChecked()
         self.cfg.values["expand_subfolders"] = [x.strip() for x in d.expand.text().split(",") if x.strip()]
         self.entrada.fill_categories()

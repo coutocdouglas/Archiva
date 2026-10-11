@@ -30,6 +30,15 @@ Montar localmente no Windows: `pip install pyinstaller`, `python empacotamento\v
 `pyinstaller empacotamento\archiva.spec --noconfirm`, e compile `empacotamento\archiva.iss`
 no Inno Setup 6 (`ISCC /DAppVersion=0.8.0 empacotamento\archiva.iss`).
 
+## Tutoriais
+Os textos ficam em `app/tutoriais.py` (lista `TUTORIAIS`; o campo `desde` marca em que versão o
+tutorial entrou e liga o selo "Novo"). As animações são gravadas do próprio Archiva:
+```
+python empacotamento/biblioteca_exemplo.py /tmp/exemplo
+QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python empacotamento/gravar_tutoriais.py /tmp/exemplo
+```
+e vão para `app/recursos/tutoriais/<id>.webp`.
+
 ## Estrutura
 - `gerenciador.pyw` — ponto de entrada
 - `app/` — interface (PySide6/Qt) e lógica; `app/recursos/` — ícone, fontes da interface, logotipo

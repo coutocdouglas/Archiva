@@ -1,4 +1,4 @@
-ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.9.0
+ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.10.0
 =====================================================================
 
 O QUE O PROGRAMA ALTERA NA BIBLIOTECA
@@ -27,6 +27,12 @@ INSTALACAO
      Executar assim mesmo (o instalador nao tem assinatura paga).
   Configuracoes, tags e miniaturas continuam as mesmas da versao antiga.
   A pasta _GERENCIADOR em F:\MODELOS pode ficar ou ser apagada depois.
+
+TUTORIAIS (a partir da 0.10)
+  - Ao abrir aparecem as boas-vindas (7 passos com animacoes). Marque
+    "Nao mostrar ao abrir" para desligar (Configuracoes > Uso liga de novo).
+  - Menu lateral > Aprender: todos os tutoriais. Os de cada versao nova
+    aparecem com o selo "Novo".
 
 PERFIL E USO EM REDE (a partir da 0.9)
   - Na primeira abertura voce cria o seu perfil (nome, foto ou inicial).

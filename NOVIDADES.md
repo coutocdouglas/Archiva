@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.10.0
+- **Boas-vindas:** ao abrir, uma apresentação em 7 passos com animações mostra o essencial (biblioteca, busca, arrastar para o Max, extrair, Entrada, tags e trabalho em equipe). Marque "Não mostrar ao abrir" para desligar; dá para ligar de novo em Configurações › Uso.
+- **Aprender:** página nova no menu lateral com todos os tutoriais, separados por assunto. O que chegar em cada atualização aparece com o selo **Novo** e, depois de atualizar, o Archiva mostra só as novidades.
+- **Corrigido:** o programa podia fechar sozinho ao atualizar a lista de categorias depois de extrair ou classificar (principalmente depois de abrir uma categoria pela página inicial).
+
 ## 0.9.0
 - **Perfis:** na primeira abertura cada pessoa cria o seu perfil, com o nome que quiser e uma foto ou a inicial com cor. O perfil fica ligado ao computador e aparece no menu lateral (clique para editar).
 - **Biblioteca compartilhada (servidor):** várias pessoas podem usar a mesma biblioteca ao mesmo tempo. Tags, grupos, capas, novidades e nomes da Entrada são os mesmos para todos e se atualizam sozinhos a cada poucos segundos.
