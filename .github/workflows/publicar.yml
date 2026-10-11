@@ -1,0 +1,84 @@
+# Monta o instalador do Archiva e publica uma versão no GitHub.
+#
+# Para lançar uma versão nova:
+#   1. atualize o arquivo VERSION (ex.: 0.8.1) e o NOVIDADES.md
+#   2. git commit e git tag v0.8.1  →  git push --follow-tags
+# O GitHub monta o Archiva-Setup-0.8.1.exe e publica em Releases; o Archiva instalado avisa sozinho.
+#
+# "Run workflow" (manual) só monta e guarda o instalador para teste, sem publicar.
+
+name: Publicar versão
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Conferir versão
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION -Raw).Trim()
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$v") {
+            Write-Error "A tag ${{ github.ref_name }} não bate com o arquivo VERSION ($v)."; exit 1
+          }
+          "versao=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Montar Archiva.exe
+        run: |
+          python empacotamento\versao.py
+          pyinstaller empacotamento\archiva.spec --noconfirm --clean
+
+      - name: Testar se abre
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\Archiva\Archiva.exe -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) { Write-Error "O Archiva.exe fechou sozinho (código $($p.ExitCode))."; exit 1 }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Montar instalador
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=${{ steps.ver.outputs.versao }} empacotamento\archiva.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Guardar instalador (teste)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Archiva-Setup-${{ steps.ver.outputs.versao }}
+          path: saida/*.exe
+
+      - name: Notas da versão
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          python empacotamento\notas.py ${{ steps.ver.outputs.versao }} > notas.txt
+
+      - name: Publicar no GitHub
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Archiva ${{ steps.ver.outputs.versao }}
+          body_path: notas.txt
+          files: saida/Archiva-Setup-${{ steps.ver.outputs.versao }}.exe

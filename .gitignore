@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+build/
+dist/
+saida/
+empacotamento/versao_exe.txt
+diagnostico_janela.txt
+# arquivos só da versão antiga aberta pelo Python (pasta F:\MODELOS\_GERENCIADOR)
+*.bat
+# a fonte do logotipo não é distribuída: o logotipo vai desenhado em app/recursos/logo.json
+app/recursos/fontes/Archiva-Logo.ttf

@@ -1,0 +1,154 @@
+ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.8.0
+=====================================================================
+
+O QUE O PROGRAMA ALTERA NA BIBLIOTECA
+  Por padrao, NADA. Ele so le as pastas.
+  A unica excecao e quando voce usa "Extrair para a biblioteca":
+    - cria a pasta do modelo dentro da categoria;
+    - move o compactado original para F:\MODELOS\_BACKUP_COMPACTADOS
+      (apagado de la depois do prazo escolhido - padrao: 1 hora);
+    - so apaga versoes V-Ray / FBX / OBJ se voce marcar na revisao.
+  E quando voce usa "Organizar pasta" (reorganiza a pasta do item no padrao)
+  ou "Classificar" na Entrada (move e renomeia o download novo).
+  Pastas que comecam com "_" na raiz (como _GERENCIADOR e _BACKUP...)
+  sao ignoradas como categoria.
+  Configuracao, tags e miniaturas ficam fora da biblioteca:
+    - Configuracao e tags ......  %APPDATA%\GerenciadorAssets3D
+    - Miniaturas ...............  %LOCALAPPDATA%\GerenciadorAssets3D\cache
+
+INSTALACAO
+  A partir da 0.8 o Archiva tem instalador e NAO precisa mais de Python:
+  1. Baixe o Archiva-Setup-x.y.z.exe em
+     https://github.com/coutocdouglas/Archiva/releases/latest
+  2. Execute. Nao pede administrador; instala em
+     %LOCALAPPDATA%\Programs\Archiva e cria atalho no menu Iniciar
+     e na Area de Trabalho.
+     Se aparecer "O Windows protegeu o computador": Mais informacoes >
+     Executar assim mesmo (o instalador nao tem assinatura paga).
+  Configuracoes, tags e miniaturas continuam as mesmas da versao antiga.
+  A pasta _GERENCIADOR em F:\MODELOS pode ficar ou ser apagada depois.
+
+ATUALIZACOES
+  Ao abrir, o Archiva consulta o GitHub. Se houver versao nova, aparece
+  "Archiva x.y.z disponivel  [Atualizar]" no rodape. Um clique baixa,
+  instala e reabre o programa (leva menos de um minuto).
+  Configuracoes > Atualizacoes: ligar/desligar e "Procurar agora".
+  O que mudou em cada versao: NOVIDADES.md no GitHub.
+
+VISUAL (a partir da 0.7)
+  - Menu lateral: Inicio, Biblioteca, Tags, Entrada e, embaixo,
+    Configuracoes. O numero ao lado de Entrada = downloads esperando.
+  - Barra de titulo integrada, com cantos arredondados (Windows 11).
+    Arraste a janela pela faixa de cima; duplo clique maximiza.
+    Se preferir a barra normal do Windows: Configuracoes > Barra de
+    titulo > "Barra padrao do Windows" (vale ao abrir de novo).
+    Se a janela nao responder direito, abra pelo arquivo
+    "ABRIR (barra do Windows).bat" desta pasta e mude a configuracao.
+  - Tamanho dos cartoes e o modo de arrastar para o 3ds Max ficam em
+    Configuracoes. F5 ou o botao circular atualiza a biblioteca.
+
+INICIO (abre primeiro)
+  - Banner com as novidades (itens classificados pela Entrada);
+    clique para abrir o item na Biblioteca. Passa sozinho a cada 6 s.
+  - Ao lado do banner, a busca: digite (nome, categoria ou tag) e Enter
+    para abrir a Biblioteca ja filtrada. Sugere tags e categorias.
+  - Abaixo da busca, os numeros da biblioteca: clique num cartao para
+    abrir a Biblioteca ja filtrada (compactados, fora do padrao...).
+  - O fundo do banner assume a cor do fundo da previa, com degrade.
+  - "Adicionados recentemente": duplo clique abre o item; da para
+    arrastar direto dali para o 3ds Max. Para passar para o lado: setas
+    redondas (aparecem com o mouse em cima), Shift + roda do mouse ou o
+    gesto lateral do touchpad. A roda sozinha continua descendo a pagina.
+  - "Tags mais usadas": cartoes com a previa, o nome e a quantidade;
+    clique para ver todos os itens com a tag.
+
+TAGS
+  - Cada tag aparece como uma pasta, com uma previa de capa (a imagem
+    como esta na pasta), o nome e a quantidade de itens.
+  - Clique numa pasta para abrir a galeria da tag: arraste para o 3ds Max,
+    duplo clique abre na Biblioteca, botao direito para mais opcoes.
+  - Capa: na galeria, botao direito > "Usar como capa desta tag".
+    Sem escolha, a capa e a previa mais recente da tag.
+  - Grupos: "+ Novo grupo" e, numa tag, botao direito > Mover para grupo.
+    Ex.: grupo "Materiais" com madeira, marmore, metal.
+  - Botao direito numa tag: renomear, juntar com outra (ex.: "madeira" e
+    "madeiras"), excluir. Excluir uma tag NAO apaga nenhum modelo.
+
+COMO USAR
+  - Categorias (esquerda) = suas pastas. Clique para ver os itens.
+  - Bolinha no cartao:
+      verde            = pronto para arrastar
+      laranja EXTRAIR  = compactado; precisa extrair antes de usar
+      azul             = extraindo / na fila
+      vermelho         = so existe a imagem, sem o arquivo do modelo
+  - Arraste o cartao verde para a viewport do 3ds Max.
+      "Arquivo .max"        -> o Max mostra o menu Open / Merge / XRef
+      "Merge com texturas"  -> faz o merge ja apontando a pasta MAPS
+
+EXTRAIR PARA A BIBLIOTECA
+  - Um item: selecione e clique "Extrair para a biblioteca"
+    (ou botao direito no cartao).
+  - Varios: selecione varios (Ctrl/Shift) e botao direito.
+  - Categoria inteira: botao direito na categoria (lista da esquerda).
+  Resultado, sempre no mesmo padrao:
+      CATEGORIA\ADORNO 01.jpg          (previa, continua onde esta)
+      CATEGORIA\ADORNO 01\             (pasta com o nome do compactado)
+          *.max                        (todos os .max juntos)
+          <nome do .max>.jpg           (copia da previa, com o nome de cada .max)
+          MAPS\                        (todo o resto, sem subpastas)
+  Nenhum arquivo de textura e renomeado. Se o compactado tiver texturas
+  DIFERENTES com o mesmo nome em pastas diferentes, a MAPS daquele item
+  mantem as subpastas originais (para nao quebrar o vinculo com o .max).
+  Cada item tem a sua propria MAPS: extrair varios de uma vez e seguro.
+  Ao final, uma janela de revisao pergunta se quer apagar:
+      - versoes V-Ray, quando existe uma versao Corona junto
+        (se so tiver V-Ray, ela fica e o programa nao pergunta);
+      - arquivos .fbx / .obj / .mtl (lista editavel em Configuracoes).
+  Arquivos baixados SEM extensao (ex.: "ADORNO 141") sao reconhecidos e
+  ganham a extensao certa (.rar/.zip/.7z) na hora de extrair.
+  Arquivos com SENHA: o programa testa sozinho as senhas ja usadas; se
+  nenhuma servir, abre uma janela para voce digitar. A senha que funcionar
+  fica salva (Configuracoes > Ver / editar senhas).
+  Se o compactado nao tiver .max, ou ja existir uma pasta com o mesmo
+  nome, nada e alterado e o item aparece na lista de erros.
+
+ENTRADA (downloads novos)
+  1. Coloque os downloads em F:\MODELOS\_ENTRADA (arquivo + previa com o
+     mesmo nome; qualquer nome serve). Pode ser dentro de subpastas.
+     Arquivos ainda baixando (.crdownload, .part) sao ignorados.
+  2. Na Entrada, selecione um ou varios itens e escolha a categoria
+     (pode digitar para buscar).
+  3. O programa mostra o nome que o item vai receber (sempre o PROXIMO
+     numero da categoria, nunca preenche numeros que faltam) e compara a
+     previa com as previas daquela categoria.
+  4. "Classificar" (ou Enter): move e renomeia, no formato baixado.
+  Se parecer repetido, voce escolhe: manter os dois / manter so o novo
+  (ele assume o nome e as tags do existente) / manter so o existente.
+  O que for descartado vai para _BACKUP_COMPACTADOS\_DESCARTADOS e e
+  apagado depois do prazo do backup.
+  LUMINARIAS aparece dividida nos tipos (Pendente, De piso, Abajur...).
+  O nome segue o item mais recente daquela subpasta (PENDENTE 20, PISO 19,
+  LUMINARIA 283...) e o numero nunca repete um nome de outra subpasta.
+  Tecnica e Teto usam nome proprio: TECNICA 01, TETO 01 e seguintes.
+  "alterar nome" muda o nome usado numa categoria (ex.: TETO 01).
+  Outras categorias com subpastas: Configuracoes.
+
+ORGANIZAR PASTAS EXTRAIDAS FORA DO PROGRAMA
+  Pastas fora do padrao aparecem com o selo roxo ORGANIZAR. O painel da
+  direita mostra o motivo (.max em subpasta, arquivos soltos, falta da
+  copia da previa, V-Ray junto com Corona, FBX/OBJ...).
+  - Um item: botao "Organizar pasta" (ou botao direito no cartao).
+  - Categoria inteira: botao direito na categoria.
+  - O filtro "Fora do padrao" (acima da grade) lista so essas pastas.
+  As mesmas regras da extracao: .max na raiz + copia da previa, o resto
+  em MAPS, nenhuma textura renomeada, copias identicas removidas.
+  No fim, a mesma revisao de V-Ray / FBX / OBJ. O que voce escolher
+  manter nao volta a ser cobrado.
+
+OUTRAS FUNCOES
+  - Tags: selecione um ou varios itens, digite no painel da direita e
+    Enter. Clique numa tag para remover.
+  - Busca: nome, categoria ou tag, sem precisar de acento.
+  - Filtro acima da grade: Todos, Prontos, Compactados, Fora do padrao.
+  - Configuracoes > Exportar tags: faca backup das tags de vez em quando.
+  - F5 recarrega a biblioteca.
