@@ -47,6 +47,22 @@ def rgba(c: QColor, a: float) -> QColor:
     return c
 
 
+# contorno do item selecionado: cobre forte (aparece sobre prévia branca e sobre fundo escuro)
+SELECT = QColor("#d9894a")
+
+
+def paint_selection(p: QPainter, r: QRectF, radius: float = 12) -> None:
+    """Anel de seleção: cobre por fora + fio escuro por dentro (separa da imagem clara)."""
+    from PySide6.QtGui import QPen
+    p.save()
+    p.setBrush(Qt.NoBrush)
+    p.setPen(QPen(SELECT, 2.6))
+    p.drawRoundedRect(r.adjusted(1.3, 1.3, -1.3, -1.3), radius, radius)
+    p.setPen(QPen(QColor(20, 13, 8, 150), 1))
+    p.drawRoundedRect(r.adjusted(3.1, 3.1, -3.1, -3.1), max(1, radius - 2.2), max(1, radius - 2.2))
+    p.restore()
+
+
 def css(c: QColor) -> str:
     return c.name()
 
@@ -185,6 +201,7 @@ def palette() -> QPalette:
 
 def stylesheet() -> str:
     t, m, f, l = TEXT.name(), MUTED.name(), FAINT.name(), LINK.name()
+    seta = (Path(__file__).resolve().parent / "recursos" / "seta.png").as_posix()
     return f"""
 * {{ font-family: "{UI_FAMILY}"; font-weight: 600; }}
 QWidget {{ color: {t}; }}
@@ -198,7 +215,9 @@ QLineEdit:focus, QPlainTextEdit:focus {{ border-color: rgba(227,207,169,0.55); }
 QComboBox {{ background: rgba(255,236,210,0.05); border: 1px solid rgba(255,230,200,0.10); border-radius: 9px;
     padding: 4px 30px 4px 11px; min-height: 28px; color: {t}; }}
 QComboBox:hover {{ border-color: rgba(255,230,200,0.22); }}
-QComboBox::drop-down {{ border: none; width: 26px; }}
+QComboBox::drop-down {{ border: none; width: 30px; subcontrol-origin: padding; subcontrol-position: center right; }}
+QComboBox::down-arrow {{ image: url({seta}); width: 12px; height: 12px; margin-right: 10px; }}
+QComboBox::down-arrow:on {{ top: 1px; }}
 QComboBox QAbstractItemView {{ background: #221b16; border: 1px solid #3d3027; selection-background-color: #4a3628;
     color: {t}; outline: none; padding: 4px; }}
 QPushButton {{ background: rgba(255,236,210,0.06); border: 1px solid rgba(255,230,200,0.12); border-radius: 9px;

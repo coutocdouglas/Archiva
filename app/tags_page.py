@@ -158,10 +158,12 @@ class GalleryDelegate(QStyledItemDelegate):
         r = QRectF(option.rect).adjusted(8, 8, -8, -8)
         img = QRectF(r.left(), r.top(), r.width(), r.width())
         draw_preview(p, self.page, a.preview, img, radius=12, zoom=1.035 if hover else 1.0)
-        if sel or hover:
+        if sel:
+            theme.paint_selection(p, img, 12)
+        elif hover:
             path = QPainterPath()
             path.addRoundedRect(img.adjusted(0.75, 0.75, -0.75, -0.75), 12, 12)
-            p.setPen(QPen(ACCENT if sel else QColor(227, 207, 169, 120), 2 if sel else 1.3))
+            p.setPen(QPen(QColor(227, 207, 169, 120), 1.3))
             p.setBrush(Qt.NoBrush)
             p.drawPath(path)
 

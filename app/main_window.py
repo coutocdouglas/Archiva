@@ -160,9 +160,7 @@ class CardDelegate(QStyledItemDelegate):
             p.drawText(img, Qt.AlignCenter, "sem prévia" if not a.preview else "…")
         p.restore()
         if selected:
-            p.setPen(QPen(theme.HILITE, 2))
-            p.setBrush(Qt.NoBrush)
-            p.drawRoundedRect(img.adjusted(1, 1, -1, -1), 11, 11)
+            theme.paint_selection(p, img, 12)
         elif hover:
             p.setPen(QPen(QColor(227, 207, 169, 110), 1.2))
             p.setBrush(Qt.NoBrush)
@@ -287,7 +285,18 @@ class PreviewBox(QWidget):
         self.w = window
         self.pix: QPixmap | None = None
         self.text = ""
+        self.path: str | None = None
+        self.title = ""
         self.setMinimumHeight(220)
+
+    def set_source(self, path: str | None, title: str = ""):
+        self.path, self.title = path, title
+        self.setCursor(Qt.PointingHandCursor if path else Qt.ArrowCursor)
+        self.setToolTip("Clique para ampliar" if path else "")
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton and self.path and os.path.exists(self.path):
+            ImageViewer(self.window(), self.path, self.title).exec()
 
     def set_pixmap(self, pix: QPixmap | None, text: str = ""):
         self.pix, self.text = pix, text
@@ -321,6 +330,65 @@ class PreviewBox(QWidget):
             p.setPen(theme.FAINT)
             p.setFont(theme.ui_font(10))
             p.drawText(r, Qt.AlignCenter, self.text)
+
+
+class ImageViewer(QDialog):
+    """Prévia ampliada numa janela própria: imagem inteira em alta resolução. Clique, Esc ou espaço fecham."""
+
+    def __init__(self, parent, path: str, title: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle(title or os.path.basename(path))
+        self.img = QPixmap(path)
+        self.title = title
+        scr = (parent.screen() if parent else QApplication.primaryScreen()).availableGeometry()
+        maxw, maxh = int(scr.width() * 0.86), int(scr.height() * 0.86)
+        if not self.img.isNull():
+            sz = self.img.size()
+            fit = sz.scaled(maxw - 48, maxh - 92, Qt.KeepAspectRatio)
+            # imagem pequena: amplia até 2x (sem passar da tela); grande: reduz para caber
+            sz = fit if fit.width() <= sz.width() * 2 else sz * 2
+            w, h = max(520, sz.width() + 48), max(420, sz.height() + 92)
+        else:
+            w, h = 600, 400
+        self.resize(w, h)
+        self.setMinimumSize(360, 300)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.fillRect(self.rect(), QColor("#17130f"))
+        area = QRectF(24, 24, self.width() - 48, self.height() - 92)
+        if not self.img.isNull():
+            sc = QSizeF(self.img.size()).scaled(area.size(), Qt.KeepAspectRatio)
+            tgt = QRectF(area.center().x() - sc.width() / 2, area.center().y() - sc.height() / 2,
+                         sc.width(), sc.height())
+            path = QPainterPath()
+            path.addRoundedRect(tgt, 14, 14)
+            p.setClipPath(path)
+            p.drawPixmap(tgt, self.img, QRectF(self.img.rect()))
+            p.setClipping(False)
+        else:
+            p.setPen(theme.FAINT)
+            p.drawText(area, Qt.AlignCenter, "Não foi possível abrir a imagem.")
+        p.setPen(theme.TEXT)
+        p.setFont(theme.ui_font(12))
+        p.drawText(QRectF(28, self.height() - 60, self.width() - 56, 26), Qt.AlignLeft | Qt.AlignVCenter, self.title)
+        p.setPen(theme.FAINT)
+        p.setFont(theme.ui_font(9))
+        info = f"{self.img.width()} × {self.img.height()} px   ·   clique ou Esc para fechar" if not self.img.isNull() \
+            else "Esc para fechar"
+        p.drawText(QRectF(28, self.height() - 36, self.width() - 56, 20), Qt.AlignLeft | Qt.AlignVCenter, info)
+
+    def mouseReleaseEvent(self, e):
+        self.accept()
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key_Escape, Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+            self.accept()
+        else:
+            super().keyPressEvent(e)
 
 
 class DetailsPanel(QWidget):
@@ -429,6 +497,7 @@ class DetailsPanel(QWidget):
         self.files.clear()
         if not a_list:
             self.preview.set_pixmap(None, "Selecione um item")
+            self.preview.set_source(None)
             self.title.setText("")
             self.subtitle.setText("")
             self.status.setText("")
@@ -442,6 +511,7 @@ class DetailsPanel(QWidget):
             a = a_list[0]
             pix = self.w.thumbs.get(a.preview)
             self.preview.set_pixmap(pix, "sem prévia" if not a.preview else "")
+            self.preview.set_source(a.preview, a.name)
             self.title.setText(a.name)
             self.subtitle.setText(pretty_category(a.category))
             self.status.setText(self.w.status_html(a))
@@ -456,6 +526,7 @@ class DetailsPanel(QWidget):
             counts = {t: 1 for t in tags}
         else:
             self.preview.set_pixmap(None, f"{len(a_list)} itens selecionados")
+            self.preview.set_source(None)
             self.title.setText(f"{len(a_list)} itens")
             self.subtitle.setText("Tags adicionadas aqui vão para todos os selecionados")
             self.status.setText("")
@@ -892,6 +963,23 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.search_box.setMinimumWidth(220)
         brow.addWidget(self.search_box, 1)
         brow.addWidget(self.show_filter)
+        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider.setRange(120, 300)
+        self.size_slider.setValue(self.thumb_size)
+        self.size_slider.setFixedWidth(110)
+        self.size_slider.setToolTip("Tamanho dos cartões")
+        self.size_slider.valueChanged.connect(self._set_size)
+        size_box = QHBoxLayout()
+        size_box.setSpacing(8)
+        small = QLabel()
+        small.setPixmap(ui.icon_pixmap("biblioteca", theme.FAINT, 13))
+        big = QLabel()
+        big.setPixmap(ui.icon_pixmap("biblioteca", theme.MUTED, 19))
+        size_box.addWidget(small)
+        size_box.addWidget(self.size_slider)
+        size_box.addWidget(big)
+        brow.addSpacing(6)
+        brow.addLayout(size_box)
         cl.addLayout(brow)
         self.model = AssetModel(self.db)
         self.grid = AssetView(self)
@@ -1869,6 +1957,11 @@ class MainWindow(FramelessMixin, QMainWindow):
 
     def _set_size(self, v):
         self.thumb_size = v
+        self.cfg.values["thumb_size"] = v
+        if hasattr(self, "size_slider") and self.size_slider.value() != v:
+            self.size_slider.blockSignals(True)
+            self.size_slider.setValue(v)
+            self.size_slider.blockSignals(False)
         self.grid.setGridSize(QSize())
         self.model.layoutChanged.emit()
 

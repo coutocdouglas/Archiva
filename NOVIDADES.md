@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.10.3
+- **Prévia ampliada:** na Biblioteca, clique na prévia do painel da direita para abrir a imagem grande numa janela própria (clique ou Esc fecha).
+- **Tamanho dos cartões direto na Biblioteca:** controle deslizante ao lado dos filtros (o mesmo das Configurações).
+- **Seleção mais visível:** o item selecionado ganhou um contorno cobre com fio escuro por dentro, que não se confunde com prévias de fundo branco (Biblioteca, Entrada e galeria de Tags).
+- **Entrada:** a barra "Mandar para a categoria" abre a lista ao clicar em qualquer parte dela, e ganhou uma seta discreta. Todas as listas de escolha do programa agora mostram a seta.
+
 ## 0.10.2
 - O cartão dos tutoriais agora tem o mesmo tamanho em todos os passos (o do texto mais longo do grupo): a moldura e os botões não mudam de lugar ao avançar, e a dica fica sempre no rodapé.
 

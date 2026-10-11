@@ -225,7 +225,10 @@ class EntradaPage(QWidget):
         self.cat = QComboBox()
         self.cat.setEditable(True)
         self.cat.setInsertPolicy(QComboBox.NoInsert)
-        self.cat.lineEdit().setPlaceholderText("Digite ou escolha a categoria…")
+        self.cat.lineEdit().setPlaceholderText("Escolha ou digite a categoria…")
+        self.cat.lineEdit().installEventFilter(self)      # clique em qualquer parte da barra abre a lista
+        self.cat.setCursor(Qt.PointingHandCursor)
+        self.cat.lineEdit().setCursor(Qt.PointingHandCursor)
         self.cat.currentIndexChanged.connect(self._on_category)
         pl.addWidget(self.cat)
         nrow = QHBoxLayout()
@@ -361,6 +364,12 @@ class EntradaPage(QWidget):
             return
         self.w.set_prefix(c.key, txt.strip() or None)
         self._update_panel()
+
+    def eventFilter(self, obj, ev):
+        from PySide6.QtCore import QEvent
+        if obj is self.cat.lineEdit() and ev.type() == QEvent.MouseButtonPress and not self.cat.view().isVisible():
+            self.cat.showPopup()
+        return super().eventFilter(obj, ev)
 
     def category(self) -> Category | None:
         key = self.cat.currentData()
