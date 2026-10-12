@@ -22,6 +22,7 @@ from . import extractor, intake
 from .config import APP_NAME, Config, app_dir, is_installed, version
 from . import atualizador, perfil, rede
 from .compartilhado import OP_NAMES, Compartilhado
+from . import indice
 from . import tutoriais
 from .database import TagDB, clean_tag
 from .maxscript import write_merge_script
@@ -594,7 +595,7 @@ class SettingsDialog(QDialog):
         super().__init__(window)
         self.w = window
         self.setWindowTitle("Configurações")
-        self.setMinimumWidth(640)
+        self.setMinimumWidth(760)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(28, 24, 28, 20)
         outer.setSpacing(18)
@@ -617,14 +618,28 @@ class SettingsDialog(QDialog):
         self.root = QLineEdit(window.cfg["library_root"])
         b1 = QPushButton("Escolher…")
         b1.clicked.connect(lambda: self._pick(self.root))
-        form.addRow("Pasta da biblioteca", self._row(self.root, b1))
+        b_test = QPushButton("Testar…")
+        b_test.setToolTip("Confere acesso, permissão de gravação, relógio e velocidade da pasta")
+        b_test.clicked.connect(self._test_library)
+        form.addRow("Pasta da biblioteca", self._row(self.root, b1, b_test))
         self.retention = QComboBox()
         for label, minutes in (("1 hora", 60), ("1 dia", 1440), ("7 dias", 10080), ("Nunca apagar", 0)):
             self.retention.addItem(label, minutes)
-        idx = self.retention.findData(int(window.cfg["backup_minutes"]))
+        idx = self.retention.findData(window.backup_minutes())
         self.retention.setCurrentIndex(idx if idx >= 0 else 0)
+        lib = window.shared.lib
+        if lib is not None and not lib.is_admin():
+            self.retention.setEnabled(False)
+            self.retention.setToolTip("Definido pelo administrador; vale para todos que usam esta biblioteca")
         n, size = extractor.backup_size(window.cfg["library_root"]) if window.cfg["library_root"] else (0, 0)
         form.addRow("Apagar backup após", self.retention)
+        if lib is not None:
+            note = QLabel(f"<span style='color:{theme.FAINT.name()}'>O prazo vale para toda a biblioteca"
+                          + (" (só o administrador muda)." if not lib.is_admin() else
+                             "; como administrador, você define para todos.") + "</span>")
+            note.setWordWrap(True)
+            note.setMinimumHeight(note.heightForWidth(430) + 4)
+            form.addRow("", note)
         form.addRow("", QLabel(f"<span style='color:{theme.FAINT.name()}'>Backup atual: {n} arquivo(s), "
                                f"{size / 1024 ** 3:.2f} GB em {extractor.BACKUP_DIR}</span>"))
         self.unwanted = QLineEdit(", ".join(window.cfg["unwanted_ext"]))
@@ -659,11 +674,11 @@ class SettingsDialog(QDialog):
         self.titlebar.addItem("Barra padrão do Windows", "windows")
         self.titlebar.setCurrentIndex(0 if window.cfg["titlebar"] != "windows" else 1)
         form.addRow("Barra de título", self.titlebar)
+        form.addRow("", QLabel(f"<span style='color:{theme.FAINT.name()}'>A barra de título muda ao abrir o "
+                               "programa de novo.</span>"))
         self.intro = QCheckBox("Mostrar as boas-vindas ao abrir o Archiva")
         self.intro.setChecked(not window.cfg["tutorial_off"])
         form.addRow("Tutorial", self.intro)
-        form.addRow("", QLabel(f"<span style='color:{theme.FAINT.name()}'>A barra de título muda ao abrir o "
-                               "programa de novo.</span>"))
 
         form = section("Tags")
         exp = QPushButton("Exportar tags (backup)…")
@@ -690,7 +705,7 @@ class SettingsDialog(QDialog):
             form.addRow(self.cache_info, clear)
 
         about = QLabel(f"<span style='color:{theme.FAINT.name()}'>{theme.APP_TITLE} {version()}  ·  "
-                       f"tags em {window.cfg.db_path}  ·  miniaturas em {window.cache_root}</span>")
+                       f"tags em {window.db.path or window.cfg.db_path}  ·  miniaturas em {window.cache_root}</span>")
         about.setWordWrap(True)
         about.setTextInteractionFlags(Qt.TextSelectableByMouse)
         outer.addWidget(about)
@@ -705,6 +720,14 @@ class SettingsDialog(QDialog):
     def reject(self):
         self.w._set_size(self._orig_size)
         super().reject()
+
+    def _test_library(self):
+        from .diagnostico import TestDialog
+        root = self.root.text().strip()
+        lib = self.w.shared.lib if root == self.w.cfg["library_root"] else None
+        if not root:
+            return
+        TestDialog(self, root, lib).exec()
 
     def _update_pwd_label(self):
         self.pwd_label.setText(f"Senhas de compactados salvas: {len(self.w.passwords)}")
@@ -1203,6 +1226,11 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.cfg.values["splitter_state"] = bytes(self.splitter.saveState().toBase64()).decode()
         self.cfg.values["thumb_size"] = self.thumb_size
         self.cfg.save()
+        if getattr(self, "_verify", None) and self._verify.isRunning():
+            self._verify.requestInterruption()
+            self._verify.wait(2000)
+        else:
+            self._save_index()
         self.thumbs.cancel_pending()
         self.entrada.shutdown()
         self.shared.unbind()
@@ -1222,7 +1250,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._update_user_chip()
         return self.profile
 
-    def start_scan(self):
+    def start_scan(self, full: bool = False):
         self.ensure_profile()
         root = self.cfg["library_root"]
         if not root or not os.path.isdir(root):
@@ -1256,6 +1284,17 @@ class MainWindow(FramelessMixin, QMainWindow):
             return
         if self._bound_root != root:
             self._bind_library(root)
+        if getattr(self, "_verify", None) and self._verify.isRunning():
+            self._verify.requestInterruption()
+            self._verify.wait(3000)
+        self._index_file = indice.cache_file(self.cache_root, root)
+        cached = None if full else indice.load(self._index_file, root)
+        if cached:
+            # abre na hora com o índice salvo e confere em segundo plano só o que mudou
+            cats, self._sigs = cached
+            self._on_scanned(cats, from_index=True)
+            self._start_verify(root)
+            return
         self.progress.setRange(0, 0)
         self.progress.show()
         self.statusBar().showMessage(f"Lendo {root}…")
@@ -1271,6 +1310,12 @@ class MainWindow(FramelessMixin, QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             ok = self.shared.bind(root, self.profile)
+            lib = self.shared.lib
+            if ok and lib.is_admin() and lib.option("backup_minutes") is None:
+                try:      # o prazo do backup do administrador passa a valer para a biblioteca toda
+                    lib.set_option("backup_minutes", int(self.cfg["backup_minutes"]))
+                except OSError:
+                    pass
             if ok and not self.db.prefixes() and self.cfg["prefixes"]:
                 for k, v in dict(self.cfg["prefixes"]).items():   # nomes da Entrada passam a valer para todos
                     self.db.set_prefix(k, v)
@@ -1294,6 +1339,12 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.shared.offer_old_tags = False
 
     # ----------------------------------------------------------------- pessoas / compartilhamento
+    def backup_minutes(self) -> int:
+        """Prazo do backup: o da biblioteca (definido pelo administrador) ou, sem biblioteca compartilhada, o local."""
+        lib = self.shared.lib
+        v = lib.option("backup_minutes") if lib is not None else None
+        return int(v if v is not None else self.cfg["backup_minutes"])
+
     def prefix_for(self, cat_key: str) -> str | None:
         return self.db.prefixes().get(cat_key)
 
@@ -1392,8 +1443,53 @@ class MainWindow(FramelessMixin, QMainWindow):
     def log_op(self, *a, **kw):
         return self.shared.log_op(*a, **kw)
 
-    def _on_scanned(self, cats: list[Category]):
+    def _start_verify(self, root: str):
+        self.statusBar().showMessage("Conferindo mudanças na biblioteca…")
+        self.progress.setRange(0, 0)
+        self.progress.show()
+        v = indice.VerifyThread(root, list(self.categories), dict(self._sigs))
+        v.changed.connect(self._on_verify_changed)
+        v.removed.connect(self._on_verify_removed)
+        v.finished_ok.connect(self._on_verify_done)
+        self._verify = v
+        v.start()
+
+    def _on_verify_changed(self, new: Category, sig: str):
+        self._sigs[new.key] = sig
+        self._replace_category(new)
+
+    def _on_verify_removed(self, key: str):
+        self._sigs.pop(key, None)
+        self.categories = [c for c in self.categories if c.key != key]
+        self._replace_category(None)
+
+    def _on_verify_done(self, n: int):
         self.progress.hide()
+        self._save_index()
+        self.statusBar().showMessage(self._summary() + (f"  ·  {n} categoria(s) atualizada(s)" if n else ""), 8000)
+        if n:
+            self.entrada.fill_categories()
+            self.home.refresh()
+
+    def _save_index(self):
+        f = getattr(self, "_index_file", None)
+        if f and self.categories:
+            indice.save(f, self.cfg["library_root"], self.categories, dict(getattr(self, "_sigs", {})))
+
+    def _summary(self) -> str:
+        n_issue = sum(1 for a in self.all_assets if a.issues)
+        n_layout = sum(1 for a in self.all_assets if self.layout_issues(a))
+        n_arch = sum(1 for a in self.all_assets if a.kind == "archive")
+        return (f"{len(self.all_assets)} itens em {len(self.categories)} categorias"
+                + (f"  ·  {n_arch} compactados" if n_arch else "")
+                + (f"  ·  {n_layout} fora do padrão" if n_layout else "")
+                + (f"  ·  {n_issue} com problema" if n_issue else ""))
+
+    def _on_scanned(self, cats: list[Category], from_index: bool = False):
+        self.progress.hide()
+        if not from_index:
+            self._sigs = indice.all_signatures(self.cfg["library_root"], cats)
+            self._save_index()
         self.extractions.library_root = self.cfg["library_root"]
         if not self.extractions.busy():
             extractor.clean_temp(self.cfg["library_root"])
@@ -1417,14 +1513,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.entrada.fill_categories()
         self.entrada.refresh()
         self.home.refresh()
-        n_issue = sum(1 for a in self.all_assets if a.issues)
-        n_layout = sum(1 for a in self.all_assets if self.layout_issues(a))
-        n_arch = sum(1 for a in self.all_assets if a.kind == "archive")
-        self.statusBar().showMessage(
-            f"{len(self.all_assets)} itens em {len(cats)} categorias"
-            + (f"  ·  {n_arch} compactados" if n_arch else "")
-            + (f"  ·  {n_layout} fora do padrão" if n_layout else "")
-            + (f"  ·  {n_issue} com problema" if n_issue else ""))
+        self.statusBar().showMessage(self._summary())
         self.apply_filter()
         if not getattr(self, "_intro_done", False):
             self._intro_done = True
@@ -1636,7 +1725,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             return
         if len(todo) > 1:
             size = sum(os.path.getsize(a.archive) for a in todo if a.archive and os.path.exists(a.archive))
-            mins = int(self.cfg["backup_minutes"])
+            mins = self.backup_minutes()
             keep = ("Os compactados originais vão para a pasta de backup e são apagados de lá depois de "
                     + {60: "1 hora", 1440: "1 dia", 10080: "7 dias"}.get(mins, f"{mins} minutos") + "."
                     if mins > 0 else "Os compactados originais vão para a pasta de backup (não são apagados).")
@@ -1760,7 +1849,23 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not old:
             return
         new = scan_category(old.path, old.key, old.name)
-        self.categories[self.categories.index(old)] = new
+        if hasattr(self, "_sigs"):
+            self._sigs[new.key] = indice.signature(new, new.path)
+        self._replace_category(new)
+        if not (getattr(self, "_verify", None) and self._verify.isRunning()):
+            QTimer.singleShot(1500, self._save_index)
+
+    def _replace_category(self, new: Category | None):
+        """Coloca a categoria relida no lugar da antiga (ou acrescenta, se for nova) e atualiza a tela."""
+        self.__dict__.pop("_maps_count", None)
+        if new is not None:
+            i = next((k for k, c in enumerate(self.categories) if c.key == new.key), None)
+            if i is None:
+                self.categories.append(new)
+                from .scanner import natural_key
+                self.categories.sort(key=lambda c: natural_key(c.name))
+            else:
+                self.categories[i] = new
         self.cat_by_key = {}
         self.all_assets = []
 
@@ -1772,15 +1877,15 @@ class MainWindow(FramelessMixin, QMainWindow):
         for c in self.categories:
             walk(c)
             self.all_assets.extend(c.all_assets())
-        self._rebuild_search_text(new.all_assets())
+        self._rebuild_search_text(new.all_assets() if new is not None else None)
         self._fill_category_tree()
         self.apply_filter()
 
     def _clean_backup(self):
         root = self.cfg["library_root"]
         if root and os.path.isdir(root):
-            extractor.clean_backup(root, int(self.cfg["backup_minutes"]))
-            intake.clean_discarded(root, int(self.cfg["backup_minutes"]))
+            extractor.clean_backup(root, self.backup_minutes())
+            intake.clean_discarded(root, self.backup_minutes())
 
     def _on_tab(self, i):
         self.sidebar.set_current(self.tabs.key_of(self.tabs.widget(i)))
@@ -1839,7 +1944,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.grid.scrollTo(idx, QAbstractItemView.PositionAtCenter)
 
     def refresh_all(self):
-        self.start_scan()
+        self.start_scan(full=True)
         self.entrada.refresh()
 
     def status_html(self, a: Asset) -> str:
@@ -1999,6 +2104,11 @@ class MainWindow(FramelessMixin, QMainWindow):
         if d.exec() != QDialog.Accepted:
             return
         self.cfg.values["backup_minutes"] = int(d.retention.currentData())
+        if self.shared.lib is not None and self.shared.lib.is_admin():
+            try:
+                self.shared.lib.set_option("backup_minutes", int(d.retention.currentData()))
+            except OSError:
+                pass
         self.cfg.values["drag_mode"] = d.drag.currentData()
         self.cfg.values["thumb_size"] = self.thumb_size
         self.cfg.values["titlebar"] = d.titlebar.currentData()

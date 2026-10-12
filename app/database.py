@@ -91,6 +91,7 @@ def clean_tag(t: str) -> str:
 class TagDB:
     def __init__(self, path: Path | None = None) -> None:
         self.sink = None              # função que grava o evento no registro compartilhado
+        self.clock = time.time        # na biblioteca compartilhada: hora do servidor
         self.sink_errors = 0
         self._depth = 0
         self._replaying = False
@@ -116,7 +117,7 @@ class TagDB:
         self.reload()
 
     def _time(self) -> float:
-        return self._now if self._now is not None else time.time()
+        return self._now if self._now is not None else self.clock()
 
     # metadados locais (posição de leitura dos registros etc.)
     def meta_get(self, k: str, default=None):

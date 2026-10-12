@@ -58,6 +58,7 @@ class Compartilhado(QObject):
             self.db.open(None)
             return False
         self.lib = lib
+        self.db.clock = lib.now
         folder = data_dir() / "bibliotecas"
         folder.mkdir(exist_ok=True)
         self.db.sink = None
@@ -96,6 +97,8 @@ class Compartilhado(QObject):
             self.lib.release_all()
         self.lib = None
         self.db.sink = None
+        import time as _t
+        self.db.clock = _t.time
         self._locks = {}
 
     def import_old_tags(self) -> int:

@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.11.0
+- **Abertura rápida:** o Archiva guarda um índice da biblioteca neste computador e abre na hora; em segundo plano confere só as categorias que mudaram (uma listagem de pasta por categoria) e relê apenas essas. Faz muita diferença com a biblioteca no servidor. "Atualizar" (F5) continua lendo tudo.
+- **Testar biblioteca** (Configurações › Biblioteca › Testar…): confere acesso à pasta, permissão de gravação, relógio deste computador em relação ao servidor, velocidade da rede e quem usa a biblioteca, explicando o que fazer quando algo não estiver certo.
+- **Relógio do servidor:** travas, histórico e ordem das tags passam a usar a hora do servidor, então um computador com o relógio errado não atrapalha mais.
+- **Prazo do backup da biblioteca:** passa a ser um só para todos (definido pelo administrador em Configurações), em vez de um por computador.
+
 ## 0.10.3
 - **Prévia ampliada:** na Biblioteca, clique na prévia do painel da direita para abrir a imagem grande numa janela própria (clique ou Esc fecha).
 - **Tamanho dos cartões direto na Biblioteca:** controle deslizante ao lado dos filtros (o mesmo das Configurações).

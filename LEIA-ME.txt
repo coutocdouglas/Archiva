@@ -1,4 +1,4 @@
-ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.10.3
+ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.11.0
 =====================================================================
 
 O QUE O PROGRAMA ALTERA NA BIBLIOTECA
@@ -48,8 +48,12 @@ PERFIL E USO EM REDE (a partir da 0.9)
   - Quem cria o primeiro perfil numa biblioteca vira administrador.
   - Os dados compartilhados ficam na pasta oculta _ARCHIVA dentro da
     biblioteca. NAO apague essa pasta.
-  - Use o mesmo prazo de backup em todos os computadores: o menor prazo
-    e o que vale (o desfazer de extracoes depende do backup).
+  - O prazo do backup vale para a biblioteca toda e so o administrador
+    muda (o desfazer de extracoes depende do backup).
+  - Configuracoes > Biblioteca > Testar...: confere acesso, gravacao,
+    relogio e velocidade da pasta no servidor.
+  - O Archiva guarda um indice da biblioteca neste computador para abrir
+    rapido; F5 (Atualizar) le tudo de novo.
 
 ATUALIZACOES
   Ao abrir, o Archiva consulta o GitHub. Se houver versao nova, aparece

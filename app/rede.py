@@ -81,10 +81,43 @@ class Biblioteca:
             self.info["admins"] = [self.uid]
             _write_json(info_path, self.info)
         self.id = self.info["id"]
+        self.skew = self.measure_skew()        # relógio do servidor - relógio deste computador (s)
         self.own_file = os.path.join(self.root, "eventos", f"{self.uid}.jsonl")
         self._seq = self._last_seq()
         self._held: dict[str, str] = {}          # chave -> arquivo da trava que eu tenho
         self._users_cache: dict[str, tuple[float, dict]] = {}
+
+    # ------------------------------------------------------------------ relógio
+    def measure_skew(self) -> float:
+        """Diferença entre o relógio do servidor (data gravada no arquivo) e o deste computador.
+
+        Travas e a ordem das tags usam a hora; com o relógio de um computador errado, uma trava poderia
+        "vencer" antes da hora. Por isso o Archiva usa sempre a hora do servidor (now()).
+        """
+        probe = os.path.join(self.root, f"relogio_{self.uid}.tmp")
+        try:
+            t0 = time.time()
+            with open(probe, "w") as f:
+                f.write("x")
+            t1 = time.time()
+            mt = os.path.getmtime(probe)
+            os.remove(probe)
+        except OSError:
+            return 0.0
+        d = mt - (t0 + t1) / 2
+        return 0.0 if abs(d) < 2 else d
+
+    def now(self) -> float:
+        return time.time() + self.skew
+
+    # ------------------------------------------------------------------ opções da biblioteca
+    def option(self, key: str, default=None):
+        return self.info.get(key, default)
+
+    def set_option(self, key: str, value) -> None:
+        self.reload_info()
+        self.info[key] = value
+        _write_json(os.path.join(self.root, "biblioteca.json"), self.info)
 
     # ------------------------------------------------------------------ administradores
     def reload_info(self) -> None:
@@ -166,7 +199,7 @@ class Biblioteca:
     def append(self, ev: dict) -> dict:
         self._seq += 1
         ev = dict(ev)
-        ev.setdefault("t", time.time())
+        ev.setdefault("t", self.now())
         ev.update(u=self.uid, s=self._seq, pc=self.profile.get("pc", ""), id=f"{self.uid}.{self._seq}")
         line = json.dumps(ev, ensure_ascii=False, separators=(",", ":")) + "\n"
         with open(self.own_file, "a", encoding="utf-8", newline="\n") as f:
@@ -237,7 +270,7 @@ class Biblioteca:
         """Tenta travar 'key'. Devolve (True, None) ou (False, dados de quem está usando)."""
         path = self._lock_path(key)
         info = {"key": key, "u": self.uid, "nome": self.profile.get("nome", ""), "pc": self.profile.get("pc", ""),
-                "op": op, "t": time.time()}
+                "op": op, "t": self.now()}
         for _ in range(2):
             try:
                 fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -282,10 +315,9 @@ class Biblioteca:
             except OSError:
                 pass
 
-    @staticmethod
-    def _stale(path: str) -> bool:
+    def _stale(self, path: str) -> bool:
         try:
-            return time.time() - os.path.getmtime(path) > LOCK_STALE
+            return self.now() - os.path.getmtime(path) > LOCK_STALE
         except OSError:
             return True
 
