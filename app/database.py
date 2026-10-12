@@ -59,10 +59,26 @@ CREATE TABLE IF NOT EXISTS lib_cfg (
     k TEXT PRIMARY KEY,
     v TEXT
 );
+CREATE TABLE IF NOT EXISTS collections (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    note       TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    archived   INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS collection_items (
+    cid      TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    added_at REAL NOT NULL,
+    added_by TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (cid, item_key)
+);
 """
 
 SHARED_TABLES = ("item_tags", "tags", "additions", "tag_groups_list", "tag_group_of", "tag_covers", "item_flags",
-                 "lib_cfg")
+                 "lib_cfg", "collections", "collection_items")
 
 
 def journaled(fn):
@@ -236,6 +252,7 @@ class TagDB:
             self.conn.execute("UPDATE OR IGNORE item_flags SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE tag_covers SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE additions SET item_key = ? WHERE item_key = ?", (new_key, old_key))
+            self.conn.execute("UPDATE OR IGNORE collection_items SET item_key = ? WHERE item_key = ?", (new_key, old_key))
         self.reload()
 
     # leitura ---------------------------------------------------------------
@@ -419,6 +436,77 @@ class TagDB:
                 for k in keys:
                     self.add_cover(t, k)
         return n
+
+    # coleções de projeto (compartilhadas com a equipe) --------------------------
+    def collections(self, archived: bool | None = False) -> list[dict]:
+        sql = ("SELECT c.id, c.name, c.note, c.created_by, c.created_at, c.updated_at, c.archived, "
+               "COUNT(ci.item_key) FROM collections c LEFT JOIN collection_items ci ON ci.cid = c.id ")
+        args = ()
+        if archived is not None:
+            sql += "WHERE c.archived = ? "
+            args = (1 if archived else 0,)
+        sql += "GROUP BY c.id ORDER BY c.updated_at DESC"
+        keys = ("id", "name", "note", "created_by", "created_at", "updated_at", "archived", "count")
+        return [dict(zip(keys, r)) for r in self.conn.execute(sql, args)]
+
+    def collection(self, cid: str) -> dict | None:
+        return next((c for c in self.collections(None) if c["id"] == cid), None)
+
+    def collection_items(self, cid: str) -> list[str]:
+        return [r[0] for r in self.conn.execute(
+            "SELECT item_key FROM collection_items WHERE cid = ? ORDER BY added_at DESC", (cid,))]
+
+    def collections_of(self, item_key: str) -> list[str]:
+        return [r[0] for r in self.conn.execute("SELECT cid FROM collection_items WHERE item_key = ?", (item_key,))]
+
+    def _touch(self, cid: str) -> None:
+        self.conn.execute("UPDATE collections SET updated_at = ? WHERE id = ?", (self._time(), cid))
+
+    @journaled
+    def create_collection(self, cid: str, name: str, created_by: str = "") -> None:
+        t = self._time()
+        with self.conn:
+            self.conn.execute("INSERT OR IGNORE INTO collections(id, name, created_by, created_at, updated_at) "
+                              "VALUES(?, ?, ?, ?, ?)", (cid, " ".join(name.split()), created_by, t, t))
+
+    @journaled
+    def rename_collection(self, cid: str, name: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE collections SET name = ? WHERE id = ?", (" ".join(name.split()), cid))
+            self._touch(cid)
+
+    @journaled
+    def set_collection_note(self, cid: str, note: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE collections SET note = ? WHERE id = ?", (note.strip(), cid))
+            self._touch(cid)
+
+    @journaled
+    def archive_collection(self, cid: str, archived: bool) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE collections SET archived = ? WHERE id = ?", (1 if archived else 0, cid))
+
+    @journaled
+    def delete_collection(self, cid: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM collection_items WHERE cid = ?", (cid,))
+            self.conn.execute("DELETE FROM collections WHERE id = ?", (cid,))
+
+    @journaled
+    def add_to_collection(self, cid: str, item_keys: list, added_by: str = "") -> None:
+        t = self._time()
+        with self.conn:
+            for k in item_keys:
+                self.conn.execute("INSERT OR IGNORE INTO collection_items(cid, item_key, added_at, added_by) "
+                                  "VALUES(?, ?, ?, ?)", (cid, k, t, added_by))
+            self._touch(cid)
+
+    @journaled
+    def remove_from_collection(self, cid: str, item_keys: list) -> None:
+        with self.conn:
+            for k in item_keys:
+                self.conn.execute("DELETE FROM collection_items WHERE cid = ? AND item_key = ?", (cid, k))
+            self._touch(cid)
 
     # migração ----------------------------------------------------------------
     def seed_from(self, old_path: Path) -> int:

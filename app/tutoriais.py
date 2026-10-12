@@ -94,6 +94,28 @@ TUTORIAIS = [
                  "escolher a capa."],
          dica="As tags valem para todos que usam a mesma biblioteca, então combine com a equipe um jeito "
               "de nomear."),
+    dict(id="colecoes", grupo="Organizar a biblioteca", desde="0.12.0",
+         titulo="Coleções de projeto",
+         resumo="Junte os modelos usados em cada trabalho.",
+         intro="A coleção guarda os modelos usados num projeto, como “Apartamento Silva – Sala”. A tag diz "
+               "o que o modelo é; a coleção diz onde ele foi usado.",
+         passos=["Em <b>Coleções</b>, clique em <b>Nova coleção</b> e dê um nome ao projeto.",
+                 "Na Biblioteca, use <b>Adicionar à coleção</b> no painel da direita, o botão direito no "
+                 "cartão ou arraste o cartão até “Coleções” no menu lateral.",
+                 "Dentro da coleção, a lista <b>Você usou recentemente</b> mostra o que você levou para o "
+                 "Max: marque os que quer e clique em Adicionar."],
+         dica="Nada entra numa coleção sozinho. Toda a equipe vê as coleções; quando o projeto acabar, "
+              "arquive para tirar da frente sem perder a lista."),
+    dict(id="atalhos", grupo="Primeiros passos", desde="0.12.0",
+         titulo="Atalhos de teclado",
+         resumo="Espaço, Ctrl+F, Ctrl+T, setas e Delete.",
+         intro="Alguns atalhos deixam o dia a dia mais rápido, sem tirar a mão do teclado.",
+         passos=["<b>Espaço</b> amplia a prévia do item selecionado; Espaço de novo fecha. "
+                 "As <b>setas</b> andam entre os cartões.",
+                 "<b>Ctrl+F</b> vai para a busca e <b>Ctrl+T</b> para o campo de tags do item selecionado.",
+                 "<b>Delete</b> descarta o item na Entrada ou tira o item de uma coleção, sempre perguntando "
+                 "antes."],
+         dica="Na Biblioteca o Delete não faz nada, de propósito: os modelos nunca são apagados por engano."),
     dict(id="equipe", grupo="Trabalho em equipe", desde="0.10.0",
          titulo="Trabalhar em equipe",
          resumo="Biblioteca no servidor, tags de todos e itens em uso.",

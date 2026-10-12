@@ -2,6 +2,14 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.12.0
+- **Coleções de projeto:** item novo no menu lateral. Junte os modelos usados em cada trabalho (ex.: "Apartamento Silva – Sala"), com anotação (cliente, endereço), arquivar e excluir. Toda a equipe vê as coleções, com quem criou.
+  - Para adicionar: "Adicionar à coleção…" no painel da direita da Biblioteca, botão direito no cartão, ou arraste o cartão até "Coleções" no menu lateral.
+  - Dentro da coleção, a faixa "Você usou recentemente" mostra o que você levou para o 3ds Max nos últimos 7 dias; marque e adicione. Nada entra numa coleção sozinho.
+- **Atalhos:** Espaço amplia a prévia (de novo fecha), Ctrl+F vai para a busca, Ctrl+T para as tags, setas andam entre os cartões. Delete descarta na Entrada ou tira o item da coleção, sempre pedindo confirmação; na Biblioteca não faz nada.
+- Tutoriais novos em Aprender: Coleções de projeto e Atalhos de teclado.
+- Caixas de marcar com o visual do programa em todas as listas.
+
 ## 0.11.0
 - **Abertura rápida:** o Archiva guarda um índice da biblioteca neste computador e abre na hora; em segundo plano confere só as categorias que mudaram (uma listagem de pasta por categoria) e relê apenas essas. Faz muita diferença com a biblioteca no servidor. "Atualizar" (F5) continua lendo tudo.
 - **Testar biblioteca** (Configurações › Biblioteca › Testar…): confere acesso à pasta, permissão de gravação, relógio deste computador em relação ao servidor, velocidade da rede e quem usa a biblioteca, explicando o que fazer quando algo não estiver certo.

@@ -249,6 +249,8 @@ class AssetView(QListView):
             return
         mime = QMimeData()
         mime.setUrls([QUrl.fromLocalFile(path)])
+        keys = [ix.data(ASSET_ROLE).key for ix in self.selectionModel().selectedIndexes()] or [a.key]
+        mime.setData("application/x-archiva-itens", "\n".join(keys).encode("utf-8"))
         drag = QDrag(self)
         drag.setMimeData(mime)
         pix = self.w.thumbs.get(a.preview)
@@ -467,6 +469,20 @@ class DetailsPanel(QWidget):
         self.tag_input.returnPressed.connect(self._add)
         lay.addWidget(self.tag_input)
 
+        lay.addSpacing(6)
+        lay.addWidget(ui.heading("Coleções", 11.5))
+        self.col_info = QLabel()
+        self.col_info.setWordWrap(True)
+        self.col_info.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9.5pt;")
+        lay.addWidget(self.col_info)
+        self.col_btn = QPushButton("Adicionar à coleção…")
+        self.col_btn.setCursor(Qt.PointingHandCursor)
+        self.col_menu = QMenu(self.col_btn)
+        self.col_menu.aboutToShow.connect(
+            lambda: self.w.colecoes.add_menu(self.col_menu, lambda: [a.key for a in self.assets]))
+        self.col_btn.setMenu(self.col_menu)
+        lay.addWidget(self.col_btn)
+
         self.files_head = ui.heading("Arquivos .max", 11.5)
         lay.addWidget(self.files_head)
         self.files = QListWidget()
@@ -505,6 +521,8 @@ class DetailsPanel(QWidget):
             self.hint.setText("Arraste um cartão direto para a viewport do 3ds Max.")
             for b in (self.btn_prepare, self.btn_organize, self.btn_open):
                 b.setVisible(False)
+            self.col_btn.setEnabled(False)
+            self.col_info.setText("")
             self.files_head.setVisible(False)
             self.files.setVisible(False)
             return
@@ -546,6 +564,12 @@ class DetailsPanel(QWidget):
             it.setData(Qt.UserRole, t)
             self.tag_list.addItem(it)
         self.tag_list.setVisible(bool(tags))
+        if len(a_list) == 1:
+            names = {c["id"]: c["name"] for c in self.w.db.collections(None)}
+            cols = [names[c] for c in self.w.db.collections_of(a_list[0].key) if c in names]
+            self.col_info.setText("Está em: " + ", ".join(cols) if cols else "Ainda não está em nenhuma coleção.")
+        else:
+            self.col_info.setText(f"{len(a_list)} itens selecionados vão juntos para a coleção.")
         free = [a for a in a_list if not self.w.shared.lock_of(a.key)]
         if len(a_list) == 1 and not free:
             self.hint.setText(f"Em uso: {self.w.lock_text(a_list[0].key)}. Os botões voltam quando terminar.")
@@ -556,6 +580,7 @@ class DetailsPanel(QWidget):
         self.btn_prepare.setVisible(can_prepare)
         self.btn_organize.setVisible(can_org)
         self.btn_open.setVisible(True)
+        self.col_btn.setEnabled(True)
         main = self.btn_prepare if can_prepare else (self.btn_organize if can_org else self.btn_open)
         for b in (self.btn_prepare, self.btn_organize, self.btn_open):
             b.setProperty("primary", b is main)
@@ -1052,15 +1077,24 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.tabs.add(self.splitter, "biblioteca", "Biblioteca")
         self.tags_page = TagsPage(self)
         self.tabs.add(self.tags_page, "tags", "Tags")
+        from .colecoes_page import ColecoesPage
+        self.colecoes = ColecoesPage(self)
+        self.tabs.add(self.colecoes, "colecoes", "Coleções")
         self.entrada = EntradaPage(self)
         self.tabs.add(self.entrada, "entrada", "Entrada")
         self.aprender = tutoriais.AprenderPage(self)
         self.aprender.open_tutorial.connect(self.show_tutorial)
         self.tabs.add(self.aprender, "aprender", "Aprender")
         self.sidebar = ui.Sidebar([("inicio", "Início", "inicio"), ("biblioteca", "Biblioteca", "biblioteca"),
-                                   ("tags", "Tags", "tags"), ("entrada", "Entrada", "entrada"),
+                                   ("tags", "Tags", "tags"), ("colecoes", "Coleções", "colecoes"),
+                                   ("entrada", "Entrada", "entrada"),
                                    ("aprender", "Aprender", "aprender")])
         self.sidebar.navigate.connect(lambda k: self.tabs.setCurrentWidget(self.tabs.page(k)))
+        # soltar cartões em "Coleções" no menu lateral: escolhe a coleção num menu
+        self._col_drop = self.sidebar.buttons["colecoes"]
+        self._col_drop.setAcceptDrops(True)
+        self._col_drop.installEventFilter(self)
+        self._setup_shortcuts()
         self.sidebar.settings.clicked.connect(self.open_settings)
         self.user_chip = perfil.UserChip()
         self.user_chip.clicked.connect(self._user_menu)
@@ -1403,7 +1437,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.details.update_completer()
         self.details.refresh()
         self.grid.viewport().update()
-        for page in (getattr(self, "home", None), getattr(self, "tags_page", None)):
+        for page in (getattr(self, "home", None), getattr(self, "tags_page", None), getattr(self, "colecoes", None)):
             if page is not None and hasattr(page, "refresh"):
                 try:
                     page.refresh()
@@ -1887,6 +1921,60 @@ class MainWindow(FramelessMixin, QMainWindow):
             extractor.clean_backup(root, self.backup_minutes())
             intake.clean_discarded(root, self.backup_minutes())
 
+    def eventFilter(self, obj, e):  # noqa: N802
+        if obj is getattr(self, "_col_drop", None):
+            from PySide6.QtCore import QEvent
+            t = e.type()
+            if t in (QEvent.DragEnter, QEvent.DragMove) and e.mimeData().hasFormat("application/x-archiva-itens"):
+                e.acceptProposedAction()
+                obj.setDown(True)
+                return True
+            if t == QEvent.DragLeave:
+                obj.setDown(False)
+                return True
+            if t == QEvent.Drop and e.mimeData().hasFormat("application/x-archiva-itens"):
+                obj.setDown(False)
+                keys = [k for k in bytes(e.mimeData().data("application/x-archiva-itens")).decode("utf-8")
+                        .split("\n") if k]
+                e.acceptProposedAction()
+                m = QMenu(self)
+                head = m.addAction(f"Adicionar {len(keys)} item(ns) a…" if len(keys) > 1 else "Adicionar a…")
+                head.setEnabled(False)
+                sub = QMenu(m)
+                self.colecoes.add_menu(sub, lambda: keys)
+                for act in sub.actions():
+                    m.addAction(act)
+                m.exec(obj.mapToGlobal(QPoint(obj.width() - 20, obj.height() // 2)))
+                return True
+        return super().eventFilter(obj, e)
+
+    def _setup_shortcuts(self):
+        from PySide6.QtGui import QShortcut
+
+        def viewer_for(view):
+            ix = view.currentIndex()
+            if ix.isValid():
+                a = ix.data(ASSET_ROLE)
+                if a and a.preview and os.path.exists(a.preview):
+                    ImageViewer(self, a.preview, a.name).exec()
+
+        for view in (self.grid, self.colecoes.grid, self.entrada.grid):
+            sc = QShortcut(QKeySequence(Qt.Key_Space), view, context=Qt.WidgetShortcut)
+            sc.activated.connect(lambda v=view: viewer_for(v))
+        sc = QShortcut(QKeySequence(Qt.Key_Delete), self.entrada.grid, context=Qt.WidgetShortcut)
+        sc.activated.connect(self.entrada.discard_selected)
+        tagk = QAction(self)
+        tagk.setShortcut(QKeySequence("Ctrl+T"))
+        tagk.triggered.connect(self._focus_tags)
+        self.addAction(tagk)
+
+    def _focus_tags(self):
+        self.tabs.setCurrentWidget(self.splitter)
+        if self.details.assets:
+            self.details.tag_input.setFocus()
+        else:
+            self.statusBar().showMessage("Selecione um ou mais itens para colocar tags.", 4000)
+
     def _on_tab(self, i):
         self.sidebar.set_current(self.tabs.key_of(self.tabs.widget(i)))
         if self.tabs.widget(i) is self.entrada:
@@ -1895,6 +1983,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.home.refresh()
         elif self.tabs.widget(i) is getattr(self, "tags_page", None):
             self.tags_page.refresh()
+        elif self.tabs.widget(i) is getattr(self, "colecoes", None):
+            self.colecoes.refresh()
 
     def _tree_item(self, key):
         # sem QTreeWidgetItemIterator: no PySide6 ele deixava a árvore instável e o programa fechava
@@ -2040,6 +2130,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             m.addAction("Copiar caminho do .max", lambda: QApplication.clipboard().setText(mx))
         m.addSeparator()
         m.addAction("Editar tags…", lambda: self.details.tag_input.setFocus())
+        cm = m.addMenu("Adicionar à coleção")
+        self.colecoes.add_menu(cm, lambda: [x.key for x in sel])
         m.exec(self.grid.viewport().mapToGlobal(pos))
 
     def _category_menu(self, pos):

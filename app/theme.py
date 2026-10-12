@@ -202,6 +202,7 @@ def palette() -> QPalette:
 def stylesheet() -> str:
     t, m, f, l = TEXT.name(), MUTED.name(), FAINT.name(), LINK.name()
     seta = (Path(__file__).resolve().parent / "recursos" / "seta.png").as_posix()
+    check = (Path(__file__).resolve().parent / "recursos" / "check.png").as_posix()
     return f"""
 * {{ font-family: "{UI_FAMILY}"; font-weight: 600; }}
 QWidget {{ color: {t}; }}
@@ -247,9 +248,10 @@ QTreeWidget, QListWidget, QListView, QTreeView {{ background: transparent; borde
 QTreeWidget::item, QListWidget::item {{ color: {t}; }}
 QTreeView::item:selected, QListView::item:selected {{ background: #3a2c22; color: #fff6e8; }}
 QCheckBox {{ spacing: 8px; }}
-QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,230,200,0.3);
-    background: rgba(255,236,210,0.05); }}
-QCheckBox::indicator:checked {{ background: {HILITE.name()}; border-color: {HILITE.name()}; }}
+QCheckBox::indicator, QListWidget::indicator, QTreeWidget::indicator {{ width: 16px; height: 16px; border-radius: 4px;
+    border: 1px solid rgba(255,230,200,0.3); background: rgba(255,236,210,0.05); }}
+QCheckBox::indicator:checked, QListWidget::indicator:checked, QTreeWidget::indicator:checked {{
+    background: {HILITE.name()}; border-color: {HILITE.name()}; image: url({check}); }}
 QProgressBar {{ background: rgba(255,236,210,0.06); border: none; border-radius: 3px; height: 6px; }}
 QProgressBar::chunk {{ background: {HILITE.name()}; border-radius: 3px; }}
 QStatusBar {{ background: transparent; color: {m}; }}

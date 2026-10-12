@@ -23,7 +23,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 SRC_LIB = os.path.abspath(sys.argv[1])
 ONLY = set(sys.argv[2:])
-ALL = ["inicio", "buscar", "arrastar", "extrair", "organizar", "entrada", "tags", "equipe", "historico", "atualizar"]
+ALL = ["inicio", "buscar", "arrastar", "extrair", "organizar", "entrada", "tags", "equipe", "historico", "atualizar",
+       "colecoes", "atalhos"]
 if not ONLY:      # cada animação num processo separado (programa limpo a cada gravação)
     import subprocess
     for name in ALL:
@@ -39,7 +40,7 @@ os.environ["APPDATA"] = os.path.join(TMP, "ad")
 os.environ["LOCALAPPDATA"] = os.path.join(TMP, "lad")
 
 from PIL import Image, ImageDraw, ImageFilter  # noqa: E402
-from PySide6.QtCore import QBuffer, QIODevice, QPoint, Qt  # noqa: E402
+from PySide6.QtCore import QBuffer, QIODevice, QPoint, Qt  # noqa: E402,F401
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
@@ -119,6 +120,7 @@ class Film:
         self.cur = (W * 0.5, H * 0.6)
         self.overlays = []          # (PIL RGBA, (x, y) em coordenadas da janela)
         self.drag_img = None
+        self.key = ""                # tecla mostrada como etiqueta (tutorial de atalhos)
 
     def snap(self, extra_widgets=()):
         pm = w.grab()
@@ -155,6 +157,19 @@ class Film:
             a = int(150 * (1 - ripple))
             cx, cy = self.cur[0] * s, self.cur[1] * s
             d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(227, 207, 169, a), width=int(3 * s))
+            img = Image.alpha_composite(img, ov)
+        if self.key:
+            from PIL import ImageFont
+            fnt = ImageFont.truetype(os.path.join(ROOT, "app", "recursos", "fontes", "ZTNature-SemiBold.ttf"),
+                                     int(26 * s))
+            tw = ImageDraw.Draw(img).textlength(self.key, font=fnt)
+            bw, bh = tw + 56 * s, 64 * s
+            x0, y0 = (img.width - bw) / 2, img.height - bh - 48 * s
+            ov = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            d = ImageDraw.Draw(ov)
+            d.rounded_rectangle((x0, y0, x0 + bw, y0 + bh), radius=int(16 * s), fill=(241, 233, 220, 240),
+                                outline=(255, 255, 255, 255), width=max(1, int(s)))
+            d.text((x0 + 28 * s, y0 + bh / 2), self.key, font=fnt, fill=(38, 21, 12, 255), anchor="lm")
             img = Image.alpha_composite(img, ov)
         cur = _cursor_img(s)
         img.alpha_composite(cur, (int(self.cur[0] * s - 2), int(self.cur[1] * s - 2)))
@@ -578,9 +593,114 @@ def f_atualizar():
     f.save()
 
 
+def _menu_snap(f, items, anchor_widget, below=True):
+    m = M.QMenu(w)
+    for t in items:
+        m.addSeparator() if t == "-" else m.addAction(t)
+    m.show()
+    wait(150)
+    p = anchor_widget.mapTo(w, QPoint(0, anchor_widget.height() + 4 if below else -m.height() - 4))
+    f.snap([(m, (p.x(), p.y()))])
+    pos = (p.x(), p.y())
+    m.close()
+    return pos, m
+
+
+def f_colecoes():
+    uid = w.profile["id"]
+    sofas = [a for a in w.all_assets if a.category == "SOFAS"]
+    ready = [a for a in w.all_assets if a.kind == "folder"][:6]
+    for a in ready:
+        w.db.record_use(a.key)
+    w.db.create_collection("c1", "Apartamento Silva – Sala", uid)
+    w.db.add_to_collection("c1", [sofas[1].key, sofas[2].key], uid)
+    w.db.create_collection("c2", "Casa de Campo – Varanda", uid)
+    w.db.add_to_collection("c2", [a.key for a in w.all_assets if a.category == "POLTRONAS"][:3], uid)
+    f = Film("colecoes")
+    w.open_library("all", cat_key="SOFAS")
+    wait(400)
+    ix, pos = card_center(sofas[0].key)
+    f.snap().hold(500)
+    f.move(pos).click()
+    w.grid.setCurrentIndex(ix)
+    wait(400)
+    f.snap().hold(600)
+    f.move(center(w.details.col_btn)).click()
+    mpos, m = _menu_snap(f, ["Apartamento Silva – Sala", "Casa de Campo – Varanda", "-", "Nova coleção…"],
+                         w.details.col_btn)
+    f.hold(500)
+    f.move((mpos[0] + 60, mpos[1] + 16)).click()
+    w.colecoes.add_items("c1", [sofas[0].key])
+    wait(300)
+    f.snap().hold(700)
+    f.move(center(w.sidebar.buttons["colecoes"])).click()
+    w.tabs.setCurrentWidget(w.tabs.page("colecoes"))
+    w.colecoes.refresh()
+    wait(600)
+    f.snap().hold(1000)
+    r = w.colecoes.view.visualRect(w.colecoes.model.index(0))
+    p = w.colecoes.view.viewport().mapTo(w, r.center())
+    f.move((p.x(), p.y())).click()
+    w.colecoes.open("c1")
+    wait(600)
+    f.snap().hold(900)
+    for i in range(2):
+        it = w.colecoes.recent.item(i)
+        rr = w.colecoes.recent.visualItemRect(it)
+        q = w.colecoes.recent.viewport().mapTo(w, rr.topLeft())
+        f.move((q.x() + 12, q.y() + rr.height() // 2), 450).click()
+        it.setCheckState(Qt.Checked)
+        wait(150)
+        f.snap().hold(250)
+    f.move(center(w.colecoes.btn_add_recent)).click()
+    w.colecoes._add_recent()
+    wait(500)
+    f.snap().hold(1800)
+    f.save()
+
+
+def f_atalhos():
+    f = Film("atalhos")
+    w.open_library("all", cat_key="POLTRONAS")
+    wait(400)
+    a = [x for x in w.all_assets if x.category == "POLTRONAS"][1]
+    ix, pos = card_center(a.key)
+    f.snap().hold(500)
+    f.move(pos).click()
+    w.grid.setCurrentIndex(ix)
+    w.grid.setFocus()
+    wait(300)
+    f.snap().hold(500)
+    f.key = "Espaço"
+    f.hold(600)
+    d = M.ImageViewer(w, a.preview, a.name)
+    d._dim = True
+    d.show()
+    wait(300)
+    f.snap([(d, ((W - d.width()) // 2, (H - d.height()) // 2))]).hold(1500)
+    d.close()
+    f.key = "Espaço"
+    f.snap().hold(500)
+    f.key = "Ctrl + F"
+    w.search.setFocus()
+    f.snap().hold(700)
+    f.key = ""
+    type_into(f, w.search, "poltrona", 90)
+    wait(400)
+    f.snap().hold(600)
+    f.key = "Ctrl + T"
+    w.grid.setCurrentIndex(w.grid.model().index(0, 0))
+    w._focus_tags()
+    wait(300)
+    f.snap().hold(1600)
+    f.key = ""
+    w.search.clear()
+    f.save()
+
+
 FILMS = [("inicio", f_inicio), ("buscar", f_buscar), ("arrastar", f_arrastar), ("extrair", f_extrair),
          ("organizar", f_organizar), ("entrada", f_entrada), ("tags", f_tags), ("equipe", f_equipe),
-         ("historico", f_historico), ("atualizar", f_atualizar)]
+         ("historico", f_historico), ("atualizar", f_atualizar), ("colecoes", f_colecoes), ("atalhos", f_atalhos)]
 
 for name, fn in FILMS:
     if ONLY and name not in ONLY:
