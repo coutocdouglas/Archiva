@@ -756,16 +756,19 @@ class HomePage(QWidget):
 
         # novidades: o que entrou pela Entrada; se ainda não houver, os arquivos mais novos da biblioteca
         adds = [(by_key[k], t) for k, t, _ in w.db.recent_additions(40) if k in by_key]
+        # faixa "Adicionados recentemente": quando o item chegou à biblioteca — pela Entrada (registrado)
+        # ou, sem registro, pela data do arquivo mais antigo dele (descompactar/organizar não conta)
+        when = {a.key: mt(a) for a in w.all_assets if a.preview}
+        for a, t in adds:
+            when[a.key] = t
+        recent = [by_key[k] for k, _ in sorted(when.items(), key=lambda kv: kv[1], reverse=True)[:30]]
         if adds:
             slides = [(a, "Novidade", f"adicionado {when_text(t)}") for a, t in adds[:8] if a.preview]
-            recent = [a for a, _ in adds[:30]]
             n_week = sum(1 for _, t in adds if time.time() - t < 7 * 86400)
             self.hello_sub.setText(f"{n_week} item(ns) novo(s) nos últimos 7 dias." if n_week
                                    else "Nenhum item novo nesta semana.")
         else:
-            newest = sorted((a for a in w.all_assets if a.preview), key=mt, reverse=True)[:30]
-            slides = [(a, "Recente na biblioteca", f"arquivo de {when_text(mt(a))}") for a in newest[:8]]
-            recent = newest
+            slides = [(a, "Recente na biblioteca", "chegou " + ("em " if "/" in when_text(mt(a)) else "") + when_text(mt(a))) for a in recent[:8]]
             self.hello_sub.setText("Os itens classificados pela aba Entrada vão aparecer em destaque aqui.")
         self.banner.set_slides(slides)
         self.added_model.set_assets(recent)

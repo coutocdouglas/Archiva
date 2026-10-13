@@ -278,7 +278,10 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
 
         a = Asset(key=f"{key}/{nm}", name=nm, category=key)
         a.members = g["images"] + g["dirs"] + [p for p, _ in g["archives"]] + g["max"] + g["other"]
-        a.added_time = max((mtimes.get(m, 0.0) for m in a.members), default=0.0)
+        # data de chegada do item: o arquivo MAIS ANTIGO dele (prévia/compactado/.max). A pasta não conta,
+        # porque ganha data nova ao ser descompactada ou organizada (o item não é "novo" por isso).
+        files = [mtimes[m] for m in g["images"] + [p for p, _ in g["archives"]] + g["max"] if mtimes.get(m)]
+        a.added_time = min(files) if files else max((mtimes.get(m, 0.0) for m in a.members), default=0.0)
         a.preview = sorted(g["images"], key=lambda p: (os.path.splitext(p)[1].lower() not in (".jpg", ".jpeg", ".png"), p))[0] if g["images"] else None
 
         if folder:

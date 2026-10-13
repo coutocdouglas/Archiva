@@ -15,7 +15,7 @@ from PySide6.QtCore import QThread, Signal
 
 from .scanner import Category, list_categories, scan_category
 
-VERSION = 2
+VERSION = 3
 
 
 def cache_file(cache_dir: Path, root: str) -> Path:

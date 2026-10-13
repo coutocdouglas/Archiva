@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.14.2
+- **Adicionados recentemente (Início):** mostra só o que chegou à biblioteca por último — pela Entrada ou, nos itens antigos, pela data do arquivo baixado. Itens antigos que acabaram de ser descompactados ou organizados não aparecem mais como novos.
+
 ## 0.14.1
 - **Organização mais visual:**
   - Itens fora do lugar viram cartões: miniatura do item, onde está **agora** e o motivo → para onde **vai** e o nome novo, com miniaturas dos itens vizinhos no destino. Separados em "Mover para outra pasta" e "Renomear na própria pasta"; "Trocar destino" e "Ignorar" em cada cartão.
