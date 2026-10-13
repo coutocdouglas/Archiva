@@ -2,6 +2,13 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.14.1
+- **Organização mais visual:**
+  - Itens fora do lugar viram cartões: miniatura do item, onde está **agora** e o motivo → para onde **vai** e o nome novo, com miniaturas dos itens vizinhos no destino. Separados em "Mover para outra pasta" e "Renomear na própria pasta"; "Trocar destino" e "Ignorar" em cada cartão.
+  - Juntar pastas lado a lado: a pasta que sai à esquerda e a principal à direita (com miniaturas, quantidade e padrão de nomes), seta e botão "Inverter", e a lista "Como vai ficar" (nome atual → nome novo) antes de conferir.
+  - A tela de conferência também mostra cartões com miniaturas e, quando houver, a miniatura do item parecido que já existe no destino.
+- **Mover para… na Biblioteca:** botão direito no cartão › Mover para… › escolha a categoria. O item vai para lá com o próximo número da categoria nova, passando pela mesma tela de conferência (com Desfazer pelo histórico).
+
 ## 0.14.0
 - **Organização** (menu lateral, só para o administrador): arrume a biblioteca sem abrir o Explorer.
   - **Itens fora do lugar:** "Procurar" encontra itens cujo nome não combina com a pasta (ex.: POLTRONA 09 dentro de MESAS) e sugere mover para a pasta certa com o próximo número de lá, ou renomear ali mesmo. Botão direito: escolher outra pasta ou ignorar o item.

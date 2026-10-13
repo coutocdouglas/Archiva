@@ -2197,6 +2197,10 @@ class MainWindow(FramelessMixin, QMainWindow):
         m.addAction("Editar tags…", lambda: self.details.tag_input.setFocus())
         cm = m.addMenu("Adicionar à coleção")
         self.colecoes.add_menu(cm, lambda: [x.key for x in sel])
+        m.addSeparator()
+        from .organizar import fill_category_menu
+        mv = m.addMenu("Mover para…")
+        fill_category_menu(mv, self.categories, lambda c: self.organizacao.move_assets(sel, c))
         m.exec(self.grid.viewport().mapToGlobal(pos))
 
     def _category_menu(self, pos):

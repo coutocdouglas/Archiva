@@ -1,4 +1,4 @@
-ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.14.0
+ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.14.1
 =====================================================================
 
 O QUE O PROGRAMA ALTERA NA BIBLIOTECA
@@ -34,6 +34,8 @@ ORGANIZACAO (a partir da 0.14, so administrador)
   - Juntar pastas: passa os itens de uma pasta para outra, renomeados na
     sequencia da principal. Pasta que ficar vazia e apagada.
   - Sempre com tela de conferencia antes e Desfazer pelo historico.
+  - Na Biblioteca: botao direito no cartao > Mover para... (vai para a
+    categoria escolhida com o proximo numero de la).
 
 PASTAS EXIBIDAS (a partir da 0.13)
   Configuracoes > Biblioteca > Pastas exibidas: desmarque as categorias

@@ -12,11 +12,10 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QIcon, QImageReader, QPixmap
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout,
-                               QLabel, QMenu, QMessageBox, QProgressDialog, QPushButton, QRadioButton,
-                               QStackedWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImageReader, QPixmap
+from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QMenu,
+                               QMessageBox, QProgressDialog, QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from . import intake, theme, ui
 from .janela import TITLE_H
@@ -48,6 +47,7 @@ class Change:
     new_name: str = ""
     action: str = "move"
     dup_of: str = ""          # nome do possível repetido no destino
+    dup_asset: Asset | None = None
 
 
 # ------------------------------------------------------------------ análise: itens fora do lugar
@@ -152,86 +152,9 @@ def check_duplicates(changes: list[Change], cats: list[Category], cache_path: st
             sim = []
         if sim:
             ch.dup_of = sim[0][0].name
+            ch.dup_asset = sim[0][0]
             ch.action = "skip"
     prog.setValue(len(changes))
-
-
-def _thumb(path: str | None) -> QIcon:
-    if not path:
-        return QIcon()
-    r = QImageReader(path)
-    sz = r.size()
-    if sz.isValid():
-        r.setScaledSize(sz.scaled(72, 72, Qt.KeepAspectRatio))
-    img = r.read()
-    return QIcon(QPixmap.fromImage(img)) if not img.isNull() else QIcon()
-
-
-# ------------------------------------------------------------------ tela de conferência
-class ReviewDialog(QDialog):
-    def __init__(self, parent, title: str, intro: str, changes: list[Change]):
-        super().__init__(parent)
-        self.changes = changes
-        self.setWindowTitle(title)
-        self.resize(1060, 640)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(28, 24, 28, 20)
-        outer.setSpacing(12)
-        t = QLabel(title)
-        t.setStyleSheet("font-size:18pt;")
-        outer.addWidget(t)
-        s = QLabel(intro)
-        s.setWordWrap(True)
-        s.setStyleSheet(f"color:{theme.MUTED.name()};")
-        outer.addWidget(s)
-        self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Item atual", "Vai ficar como", "Observação", "Ação"])
-        self.tree.setRootIsDecorated(False)
-        self.tree.setIconSize(QSize(40, 40))
-        self.tree.setStyleSheet("QTreeWidget::item{padding:4px 2px;}")
-        self.combos: list[QComboBox] = []
-        for ch in changes:
-            it = QTreeWidgetItem([pretty(ch.asset.key), f"{pretty(ch.dest.key)} › {ch.new_name}",
-                                  (f"possível repetido de {ch.dup_of}" if ch.dup_of else ch.reason), ""])
-            it.setIcon(0, _thumb(ch.asset.preview))
-            if ch.dup_of:
-                it.setForeground(2, theme.WARN)
-            self.tree.addTopLevelItem(it)
-            cb = QComboBox()
-            for label, key in ACTIONS:
-                cb.addItem(label, key)
-            cb.setCurrentIndex(cb.findData(ch.action))
-            cb.currentIndexChanged.connect(self._count)
-            self.tree.setItemWidget(it, 3, cb)
-            self.combos.append(cb)
-        for i, wdt in enumerate((290, 330, 200)):
-            self.tree.setColumnWidth(i, wdt)
-        self.tree.header().setStretchLastSection(True)
-        outer.addWidget(self.tree, 1)
-        row = QHBoxLayout()
-        self.summary = QLabel()
-        self.summary.setStyleSheet(f"color:{theme.MUTED.name()};")
-        row.addWidget(self.summary, 1)
-        bb = QDialogButtonBox()
-        self.ok = ui.primary(bb.addButton("Aplicar", QDialogButtonBox.AcceptRole))
-        bb.addButton("Cancelar", QDialogButtonBox.RejectRole)
-        bb.accepted.connect(self.accept)
-        bb.rejected.connect(self.reject)
-        row.addWidget(bb)
-        outer.addLayout(row)
-        self._count()
-
-    def _count(self, *_):
-        acts = [cb.currentData() for cb in self.combos]
-        m, d = acts.count("move"), acts.count("discard")
-        self.summary.setText(f"{m} para mover e renomear" + (f"  ·  {d} para descartar" if d else "")
-                             + f"  ·  {acts.count('skip')} pulado(s).  Nada foi alterado ainda.")
-        self.ok.setEnabled(m + d > 0)
-
-    def accept(self):
-        for ch, cb in zip(self.changes, self.combos):
-            ch.action = cb.currentData()
-        super().accept()
 
 
 # ------------------------------------------------------------------ aplicar
@@ -312,6 +235,295 @@ def _remove_if_empty(path: str) -> None:
         pass
 
 
+
+
+# ================================================================== parte visual
+from PySide6.QtCore import QPointF, QRectF  # noqa: E402
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen  # noqa: E402
+from PySide6.QtWidgets import QCheckBox, QScrollArea  # noqa: E402
+
+_PIX: dict[tuple, QPixmap | None] = {}
+_EDGE: dict[str, QColor] = {}
+
+
+def thumb_pixmap(path: str | None, size: int) -> QPixmap | None:
+    if not path:
+        return None
+    k = (path, size)
+    if k not in _PIX:
+        r = QImageReader(path)
+        r.setAutoTransform(True)
+        sz = r.size()
+        if sz.isValid():
+            r.setScaledSize(sz.scaled(size * 2, size * 2, Qt.KeepAspectRatio))
+        img = r.read()
+        _PIX[k] = QPixmap.fromImage(img) if not img.isNull() else None
+    return _PIX[k]
+
+
+class Thumb(QWidget):
+    """Miniatura com cantos arredondados sobre a cor do próprio fundo (ou um marcador quando não há prévia)."""
+
+    def __init__(self, path: str | None, size: int = 88, radius: float = 12):
+        super().__init__()
+        self.path, self.r = path, radius
+        self.setFixedSize(size, size)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        path = QPainterPath()
+        path.addRoundedRect(r, self.r, self.r)
+        pm = thumb_pixmap(self.path, self.width())
+        p.setClipPath(path)
+        if pm:
+            col = _EDGE.get(self.path)
+            if col is None:
+                from .home_page import edge_color
+                col = _EDGE[self.path] = edge_color(pm)
+            p.fillRect(r, col)
+            sz = pm.size().scaled(r.size().toSize(), Qt.KeepAspectRatio)
+            p.drawPixmap(QRectF(r.center().x() - sz.width() / 2, r.center().y() - sz.height() / 2,
+                                sz.width(), sz.height()), pm, QRectF(pm.rect()))
+        else:
+            p.fillRect(r, QColor(255, 236, 210, 14))
+            ic = ui.icon_pixmap("pasta", theme.FAINT, max(14, self.width() // 3))
+            p.drawPixmap(int(r.center().x() - ic.width() / 4), int(r.center().y() - ic.height() / 4), ic)
+        p.setClipping(False)
+        p.setPen(QPen(QColor(255, 236, 210, 30), 1))
+        p.drawPath(path)
+
+
+class Arrow(QWidget):
+    def __init__(self, width=44, label=""):
+        super().__init__()
+        self.label = label
+        self.setFixedWidth(width)
+        self.setMinimumHeight(40)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        y = self.height() / 2
+        p.setPen(QPen(theme.HILITE, 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        x0, x1 = 6, self.width() - 8
+        p.drawLine(QPointF(x0, y), QPointF(x1, y))
+        p.drawLine(QPointF(x1 - 7, y - 6), QPointF(x1, y))
+        p.drawLine(QPointF(x1 - 7, y + 6), QPointF(x1, y))
+
+
+def _small(text, color=None, size=8.2, spacing=1.2):
+    l = QLabel(text)
+    l.setStyleSheet(f"color:{(color or theme.FAINT).name()}; font-size:{size}pt; letter-spacing:{spacing}px;")
+    return l
+
+
+def _pill(text, fg, bg):
+    l = QLabel(text)
+    l.setStyleSheet(f"color:{fg}; background:{bg}; border-radius:9px; padding:2px 9px; font-size:8.6pt;")
+    l.setSizePolicy(l.sizePolicy().horizontalPolicy(), l.sizePolicy().verticalPolicy())
+    return l
+
+
+class ChangeCard(ui.Glass):
+    """Um item: como está agora → como vai ficar (com miniaturas). mode = 'list' (marcar) ou 'review' (ação)."""
+
+    def __init__(self, page, ch: Change, mode: str = "list"):
+        super().__init__(14)
+        self.page, self.ch, self.mode = page, ch, mode
+        row = QHBoxLayout(self)
+        row.setContentsMargins(14, 12, 16, 12)
+        row.setSpacing(16)
+        if mode == "list":
+            self.check = QCheckBox()
+            self.check.setToolTip("Incluir na mudança")
+            row.addWidget(self.check)
+        a = ch.asset
+        row.addWidget(Thumb(a.preview, 84))
+        src = QVBoxLayout()
+        src.setSpacing(3)
+        src.addWidget(_small("AGORA"))
+        src.addWidget(_small(pretty(a.category), theme.MUTED, 9.4, 0))
+        nm = QLabel(a.name)
+        nm.setStyleSheet("font-size:12.5pt;")
+        src.addWidget(nm)
+        src.addWidget(_pill(ch.reason or "fora do padrão", "#26150c", theme.WARN.name()), 0, Qt.AlignLeft)
+        src.addStretch(1)
+        row.addLayout(src, 3)
+        row.addWidget(Arrow())
+        dst = QVBoxLayout()
+        dst.setSpacing(3)
+        same = ch.dest.key == a.category
+        dst.addWidget(_small("VAI FICAR (RENOMEADO AQUI)" if same else "VAI PARA"))
+        dst.addWidget(_small(pretty(ch.dest.key), theme.MUTED, 9.4, 0))
+        nn = QLabel(ch.new_name or "—")
+        nn.setStyleSheet(f"font-size:12.5pt; color:{theme.HILITE.name()};")
+        dst.addWidget(nn)
+        nb = [x for x in ch.dest.assets if x.key != a.key][-4:]
+        if nb:
+            strip = QHBoxLayout()
+            strip.setSpacing(5)
+            for x in nb:
+                t = Thumb(x.preview, 30, 7)
+                t.setToolTip(x.name)
+                strip.addWidget(t)
+            strip.addSpacing(6)
+            strip.addWidget(_small(f"junto de {nb[0].name} … {nb[-1].name}" if len(nb) > 1
+                                   else f"junto de {nb[0].name}", theme.FAINT, 8.4, 0))
+            strip.addStretch(1)
+            dst.addLayout(strip)
+        dst.addStretch(1)
+        row.addLayout(dst, 3)
+        if mode == "review" and ch.dup_asset is not None:
+            dup = QVBoxLayout()
+            dup.setSpacing(3)
+            dup.addWidget(_small("PARECIDO COM", theme.WARN))
+            dup.addWidget(Thumb(ch.dup_asset.preview, 60, 9))
+            dup.addWidget(_small(ch.dup_asset.name, theme.MUTED, 8.6, 0))
+            row.addLayout(dup)
+        right = QVBoxLayout()
+        right.setSpacing(8)
+        if mode == "list":
+            self.dest_btn = QPushButton("Trocar destino")
+            self.dest_btn.setMenu(page.dest_menu(self.dest_btn, ch))
+            right.addWidget(self.dest_btn)
+            ign = QPushButton("Ignorar")
+            ign.setProperty("flat", True)
+            ign.setToolTip("Está certo assim: não mostrar mais este item")
+            ign.clicked.connect(lambda: page.ignore(ch))
+            right.addWidget(ign)
+        else:
+            self.combo = QComboBox()
+            for label, key in ACTIONS:
+                self.combo.addItem(label, key)
+            self.combo.setCurrentIndex(self.combo.findData(ch.action))
+            self.combo.setMinimumWidth(130)
+            right.addWidget(_small("AÇÃO"))
+            right.addWidget(self.combo)
+        right.addStretch(1)
+        row.addLayout(right)
+
+
+def _scroll_box():
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.NoFrame)
+    area.setStyleSheet("QScrollArea{background:transparent;} QScrollArea > QWidget > QWidget{background:transparent;}")
+    box = QWidget()
+    lay = QVBoxLayout(box)
+    lay.setContentsMargins(0, 0, 8, 0)
+    lay.setSpacing(10)
+    area.setWidget(box)
+    return area, lay
+
+
+class ReviewDialog(QDialog):
+    """Conferência antes de mexer nos arquivos: um cartão por item, com a ação escolhida em cada um."""
+
+    def __init__(self, parent, title: str, intro: str, changes: list[Change], page=None):
+        super().__init__(parent)
+        self.changes = changes
+        self.setWindowTitle(title)
+        self.resize(1200, 760)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(28, 24, 28, 20)
+        outer.setSpacing(12)
+        t = QLabel(title)
+        t.setStyleSheet("font-size:18pt;")
+        outer.addWidget(t)
+        s = QLabel(intro)
+        s.setWordWrap(True)
+        s.setStyleSheet(f"color:{theme.MUTED.name()};")
+        outer.addWidget(s)
+        area, lay = _scroll_box()
+        self.cards = []
+        for ch in changes:
+            c = ChangeCard(page, ch, "review")
+            c.combo.currentIndexChanged.connect(self._count)
+            lay.addWidget(c)
+            self.cards.append(c)
+        lay.addStretch(1)
+        outer.addWidget(area, 1)
+        row = QHBoxLayout()
+        self.summary = QLabel()
+        self.summary.setStyleSheet(f"color:{theme.MUTED.name()};")
+        row.addWidget(self.summary, 1)
+        bb = QDialogButtonBox()
+        self.ok = ui.primary(bb.addButton("Aplicar", QDialogButtonBox.AcceptRole))
+        bb.addButton("Cancelar", QDialogButtonBox.RejectRole)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        row.addWidget(bb)
+        outer.addLayout(row)
+        self._count()
+
+    def _count(self, *_):
+        acts = [c.combo.currentData() for c in self.cards]
+        m, d = acts.count("move"), acts.count("discard")
+        self.summary.setText(f"{m} para mover e renomear" + (f"  ·  {d} para descartar" if d else "")
+                             + f"  ·  {acts.count('skip')} pulado(s).   Nada foi alterado ainda.")
+        self.ok.setEnabled(m + d > 0)
+
+    def accept(self):
+        for c in self.cards:
+            c.ch.action = c.combo.currentData()
+        super().accept()
+
+
+class FolderCard(ui.Glass):
+    """Pasta no 'Juntar pastas': escolha, quantidade, padrão de nomes e algumas miniaturas."""
+
+    def __init__(self, page, title: str, principal: bool):
+        super().__init__(16)
+        self.page, self.principal = page, principal
+        v = QVBoxLayout(self)
+        v.setContentsMargins(20, 18, 20, 18)
+        v.setSpacing(8)
+        head = QHBoxLayout()
+        head.addWidget(_small(title, theme.HILITE if principal else theme.FAINT, 8.6))
+        head.addStretch(1)
+        v.addLayout(head)
+        self.combo = QComboBox()
+        v.addWidget(self.combo)
+        self.name = QLabel()
+        self.name.setStyleSheet("font-size:17pt;")
+        v.addWidget(self.name)
+        self.info = QLabel()
+        self.info.setStyleSheet(f"color:{theme.MUTED.name()};")
+        self.info.setWordWrap(True)
+        v.addWidget(self.info)
+        self.strip = QHBoxLayout()
+        self.strip.setSpacing(8)
+        v.addLayout(self.strip)
+        v.addStretch(1)
+        self.setMinimumHeight(260)
+
+    def show_cat(self, cat: Category | None):
+        while self.strip.count():
+            it = self.strip.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        if cat is None:
+            self.name.setText("—")
+            self.info.setText("Escolha uma pasta acima.")
+            return
+        self.name.setText(pretty(cat.key))
+        items = cat.assets
+        parsed = [a.name for a in items]
+        pat = intake.name_pattern(cat)[0] if items else None
+        rng = f"{parsed[0]}  …  {parsed[-1]}" if len(parsed) > 1 else (parsed[0] if parsed else "")
+        self.info.setText(f"{len(items)} itens" + (f"  ·  nome dos itens: {pat} NN" if pat else "")
+                          + (f"\n{rng}" if rng else "")
+                          + ("\nTem subpastas: escolha uma delas." if cat.children and not cat.assets else ""))
+        for a in items[-6:]:
+            t = Thumb(a.preview, 64, 10)
+            t.setToolTip(a.name)
+            self.strip.addWidget(t)
+        self.strip.addStretch(1)
+
+
 # ------------------------------------------------------------------ página
 class OrganizacaoPage(QWidget):
     def __init__(self, window):
@@ -326,7 +538,7 @@ class OrganizacaoPage(QWidget):
         head.addWidget(t)
         head.addStretch(1)
         self.seg = ui.Segmented([("Itens fora do lugar", "lugar"), ("Juntar pastas", "juntar")])
-        self.seg.currentIndexChanged.connect(lambda i: self.stack.setCurrentIndex(i))
+        self.seg.currentIndexChanged.connect(lambda i: (self.stack.setCurrentIndex(i), self._update_merge()))
         head.addWidget(self.seg, 0, Qt.AlignBottom)
         lay.addLayout(head)
         sub = QLabel("Ferramentas do administrador para arrumar a biblioteca sem abrir o Explorer. Nada é alterado "
@@ -346,62 +558,66 @@ class OrganizacaoPage(QWidget):
         p1 = QWidget()
         l1 = QVBoxLayout(p1)
         l1.setContentsMargins(0, 0, 0, 0)
-        l1.setSpacing(10)
+        l1.setSpacing(12)
         r1 = QHBoxLayout()
+        r1.setSpacing(10)
         self.find_btn = ui.primary(QPushButton("Procurar"))
         self.find_btn.clicked.connect(self.scan_misplaced)
         r1.addWidget(self.find_btn)
         self.found = QLabel("Procura itens cujo nome não combina com a pasta (ex.: CAMA 01 dentro de MESAS).")
         self.found.setStyleSheet(f"color:{theme.MUTED.name()};")
         r1.addWidget(self.found, 1)
-        self.move_btn = QPushButton("Conferir e mover marcados…")
+        self.all_btn = QPushButton("Marcar todos")
+        self.all_btn.clicked.connect(lambda: self._check_all(True))
+        self.none_btn = QPushButton("Desmarcar")
+        self.none_btn.clicked.connect(lambda: self._check_all(False))
+        self.move_btn = ui.primary(QPushButton("Conferir marcados…"))
         self.move_btn.clicked.connect(self.review_misplaced)
-        r1.addWidget(self.move_btn)
+        for b in (self.all_btn, self.none_btn, self.move_btn):
+            r1.addWidget(b)
         l1.addLayout(r1)
-        self.list = QTreeWidget()
-        self.list.setHeaderLabels(["Item", "Sugestão", "Motivo"])
-        self.list.setRootIsDecorated(False)
-        self.list.setIconSize(QSize(40, 40))
-        self.list.setStyleSheet("QTreeWidget::item{padding:4px 2px;}")
-        self.list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.list.customContextMenuRequested.connect(self._list_menu)
-        for i, wdt in enumerate((360, 360, 260)):
-            self.list.setColumnWidth(i, wdt)
-        l1.addWidget(self.list, 1)
-        hint = QLabel("Botão direito num item: escolher outra pasta de destino ou ignorar (não aparece mais).")
-        hint.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:9.3pt;")
-        l1.addWidget(hint)
+        self.area, self.cards_lay = _scroll_box()
+        l1.addWidget(self.area, 1)
         self.stack.addWidget(p1)
         self.changes: list[Change] = []
+        self.cards: list[ChangeCard] = []
 
         # ---- juntar pastas
         p2 = QWidget()
         l2 = QVBoxLayout(p2)
         l2.setContentsMargins(0, 0, 0, 0)
-        l2.setSpacing(12)
-        g = ui.Glass(14)
-        gl = QVBoxLayout(g)
-        gl.setContentsMargins(22, 18, 22, 20)
-        gl.setSpacing(10)
-        gl.addWidget(ui.heading("Juntar duas pastas", 12))
-        e = QLabel("Os itens de uma pasta passam para a outra, renomeados na sequência dela (ex.: MATERIAL 05 → "
-                   "MATERIAIS E TEXTURAS 41). A pasta que ficar vazia é apagada; se sobrar algo nela, ela fica.")
-        e.setWordWrap(True)
-        e.setStyleSheet(f"color:{theme.MUTED.name()};")
-        gl.addWidget(e)
-        self.ca, self.cb = QComboBox(), QComboBox()
-        for lbl, cb in (("Pasta A", self.ca), ("Pasta B", self.cb)):
-            row = QHBoxLayout()
-            ll = QLabel(lbl)
-            ll.setFixedWidth(70)
-            row.addWidget(ll)
-            row.addWidget(cb, 1)
-            gl.addLayout(row)
-        go = ui.primary(QPushButton("Continuar…"))
-        go.clicked.connect(self.start_merge)
-        gl.addWidget(go, 0, Qt.AlignRight)
-        l2.addWidget(g)
-        l2.addStretch(1)
+        l2.setSpacing(14)
+        row = QHBoxLayout()
+        row.setSpacing(18)
+        self.src_card = FolderCard(self, "PASTA QUE VAI SER JUNTADA (SAI)", False)
+        self.dst_card = FolderCard(self, "PASTA PRINCIPAL (FICA)", True)
+        mid = QVBoxLayout()
+        mid.addStretch(1)
+        mid.addWidget(Arrow(90), 0, Qt.AlignHCenter)
+        cap = _small("os itens vão para a\nprincipal e ganham\no nome dela", theme.MUTED, 8.8, 0)
+        cap.setAlignment(Qt.AlignCenter)
+        mid.addWidget(cap)
+        swap = QPushButton("⇄  Inverter")
+        swap.clicked.connect(self._swap)
+        mid.addWidget(swap, 0, Qt.AlignHCenter)
+        mid.addStretch(1)
+        row.addWidget(self.src_card, 1)
+        row.addLayout(mid)
+        row.addWidget(self.dst_card, 1)
+        l2.addLayout(row)
+        for card in (self.src_card, self.dst_card):
+            card.combo.currentIndexChanged.connect(self._update_merge)
+        l2.addWidget(ui.heading("Como vai ficar", 11))
+        self.prev_area, self.prev_lay = _scroll_box()
+        l2.addWidget(self.prev_area, 1)
+        brow = QHBoxLayout()
+        self.merge_info = QLabel()
+        self.merge_info.setStyleSheet(f"color:{theme.MUTED.name()};")
+        brow.addWidget(self.merge_info, 1)
+        self.merge_btn = ui.primary(QPushButton("Conferir e juntar…"))
+        self.merge_btn.clicked.connect(self.start_merge)
+        brow.addWidget(self.merge_btn)
+        l2.addLayout(brow)
         self.stack.addWidget(p2)
 
     # ------------------------------------------------------------------ comum
@@ -410,16 +626,17 @@ class OrganizacaoPage(QWidget):
         self.locked.setVisible(not admin)
         self.stack.setVisible(admin)
         self.seg.setVisible(admin)
-        for cb in (self.ca, self.cb):
+        for cb in (self.src_card.combo, self.dst_card.combo):
             cur = cb.currentData()
             cb.blockSignals(True)
             cb.clear()
-            cb.addItem("", None)
+            cb.addItem("Escolha a pasta…", None)
             for c in self._all_cats_flat():
                 cb.addItem(f"{pretty(c.key)}   ({len(c.all_assets())})", c.key)
             i = cb.findData(cur)
             cb.setCurrentIndex(i if i >= 0 else 0)
             cb.blockSignals(False)
+        self._update_merge()
 
     def _all_cats_flat(self) -> list[Category]:
         out, stack = [], list(self.w.categories)
@@ -432,17 +649,24 @@ class OrganizacaoPage(QWidget):
     def _cat(self, key) -> Category | None:
         return self.w.cat_by_key.get(key)
 
-    def _review_and_apply(self, changes, title, intro, op, merge_source=None):
+    def dest_menu(self, parent, ch: Change) -> QMenu:
+        m = QMenu(parent)
+        m.addAction("Renomear aqui mesmo", lambda: self.set_dest(ch, self._cat(ch.asset.category)))
+        m.addSeparator()
+        fill_category_menu(m, self.w.categories, lambda c: self.set_dest(ch, c))
+        return m
+
+    def review(self, changes, title, intro, op, merge_source=None) -> bool:
         plan_names(changes, self.w.categories, self.w.db)
         check_duplicates(changes, self.w.categories, str(self.w.cache_root / "assinaturas.db"), self)
-        d = ReviewDialog(self, title, intro, changes)
+        d = ReviewDialog(self.w, title, intro, changes, self)
         if d.exec() != QDialog.Accepted:
             return False
         moved, disc, errors = apply_changes(self.w, changes, op, merge_source)
         msg = f"{moved} item(ns) movido(s) e renomeado(s)" + (f", {disc} descartado(s)" if disc else "") + "."
         self.w.statusBar().showMessage(msg, 10000)
         if errors:
-            QMessageBox.warning(self, "Organização", msg + "\n\nAlguns itens tiveram problema:\n\n" + "\n".join(errors))
+            QMessageBox.warning(self.w, "Organização", msg + "\n\nAlguns itens tiveram problema:\n\n" + "\n".join(errors))
         return True
 
     # ------------------------------------------------------------------ itens fora do lugar
@@ -450,115 +674,168 @@ class OrganizacaoPage(QWidget):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             self.changes = find_misplaced(self.w.categories, self.w.db, self.w.db.prefixes())
+            plan_names(self.changes, self.w.categories, self.w.db)
         finally:
             QApplication.restoreOverrideCursor()
-        self._fill_list()
+        self._fill_cards()
 
-    def _fill_list(self):
-        self.list.clear()
-        for ch in self.changes:
-            it = QTreeWidgetItem([pretty(ch.asset.key),
-                                  ("renomear aqui mesmo" if ch.dest.key == ch.asset.category
-                                   else f"mover para {pretty(ch.dest.key)}"), ch.reason])
-            it.setIcon(0, _thumb(ch.asset.preview))
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-            it.setCheckState(0, Qt.Checked if ch.dest.key != ch.asset.category else Qt.Unchecked)
-            self.list.addTopLevelItem(it)
+    def _fill_cards(self):
+        checked = {id(c.ch) for c in self.cards if c.check.isChecked()}
+        first = not self.cards
+        while self.cards_lay.count():
+            it = self.cards_lay.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        self.cards = []
+        moves = [c for c in self.changes if c.dest.key != c.asset.category]
+        renames = [c for c in self.changes if c.dest.key == c.asset.category]
+        for title, group, default in (("Mover para outra pasta", moves, True),
+                                      ("Renomear na própria pasta", renames, False)):
+            if not group:
+                continue
+            self.cards_lay.addWidget(ui.heading(f"{title}  ({len(group)})", 11))
+            for ch in group:
+                card = ChangeCard(self, ch, "list")
+                card.check.setChecked(default if first else id(ch) in checked)
+                self.cards_lay.addWidget(card)
+                self.cards.append(card)
+            self.cards_lay.addSpacing(10)
+        self.cards_lay.addStretch(1)
         n = len(self.changes)
-        self.found.setText(f"{n} item(ns) com nome fora do padrão da pasta." if n else
+        self.found.setText(f"{len(moves)} para mover de pasta  ·  {len(renames)} para renomear." if n else
                            "Nenhum item fora do lugar. Tudo certo!")
-        self.move_btn.setEnabled(n > 0)
+        for b in (self.all_btn, self.none_btn, self.move_btn):
+            b.setEnabled(n > 0)
 
-    def _list_menu(self, pos):
-        it = self.list.itemAt(pos)
-        if it is None:
-            return
-        ch = self.changes[self.list.indexOfTopLevelItem(it)]
-        m = QMenu(self)
-        dest = m.addMenu("Mover para…")
-        for c in self._all_cats_flat():
-            if c.assets or not c.children:
-                dest.addAction(pretty(c.key), lambda c=c: self._set_dest(ch, it, c))
-        m.addAction("Renomear aqui mesmo", lambda: self._set_dest(ch, it, self._cat(ch.asset.category)))
-        m.addSeparator()
-        m.addAction("Ignorar este item (está certo assim)", lambda: self._ignore(ch))
-        m.exec(self.list.viewport().mapToGlobal(pos))
+    def _check_all(self, on):
+        for c in self.cards:
+            c.check.setChecked(on)
 
-    def _set_dest(self, ch, it, cat):
+    def set_dest(self, ch, cat):
         if cat is None:
             return
+        for c in self.cards:
+            if c.ch is ch:
+                c.check.setChecked(True)
         ch.dest = cat
-        it.setText(1, "renomear aqui mesmo" if cat.key == ch.asset.category else f"mover para {pretty(cat.key)}")
-        it.setText(2, "escolhido por você")
-        it.setCheckState(0, Qt.Checked)
+        ch.reason = "escolhido por você" if cat.key != ch.asset.category else "renomear na sequência da pasta"
+        plan_names(self.changes, self.w.categories, self.w.db)
+        self._fill_cards()
 
-    def _ignore(self, ch):
+    def ignore(self, ch):
         self.w.db.set_flag(ch.asset.key, IGNORE_FLAG)
         self.changes.remove(ch)
-        self._fill_list()
+        self._fill_cards()
 
     def review_misplaced(self):
-        sel = [ch for i, ch in enumerate(self.changes)
-               if self.list.topLevelItem(i).checkState(0) == Qt.Checked]
+        sel = [c.ch for c in self.cards if c.check.isChecked()]
         if not sel:
             QMessageBox.information(self, "Organização", "Marque ao menos um item.")
             return
         for ch in sel:
-            ch.action, ch.dup_of = "move", ""
-        if self._review_and_apply(sel, "Conferir itens fora do lugar",
-                                  "Cada item vai para a pasta indicada com o próximo número livre de lá. "
-                                  "Itens parecidos com algo que já existe no destino vêm marcados como "
-                                  "\"Pular\"; escolha o que fazer em cada um.", "mover"):
+            ch.action, ch.dup_of, ch.dup_asset = "move", "", None
+        if self.review(sel, "Conferir itens fora do lugar",
+                       "Cada item vai para a pasta indicada com o próximo número livre de lá. Itens parecidos com "
+                       "algo que já existe no destino vêm marcados como \"Pular\"; escolha o que fazer em cada um.",
+                       "mover"):
             self.scan_misplaced()
 
     # ------------------------------------------------------------------ juntar pastas
+    def _swap(self):
+        a, b = self.src_card.combo.currentIndex(), self.dst_card.combo.currentIndex()
+        for cb, i in ((self.src_card.combo, b), (self.dst_card.combo, a)):
+            cb.blockSignals(True)
+            cb.setCurrentIndex(i)
+            cb.blockSignals(False)
+        self._update_merge()
+
+    def _merge_pair(self):
+        return self._cat(self.src_card.combo.currentData()), self._cat(self.dst_card.combo.currentData())
+
+    def _merge_problem(self, src, dst) -> str:
+        if not src or not dst:
+            return "Escolha as duas pastas."
+        if src.key == dst.key:
+            return "Escolha pastas diferentes."
+        if src.key.startswith(dst.key + "/") or dst.key.startswith(src.key + "/"):
+            return "Uma pasta está dentro da outra; escolha pastas separadas."
+        if src.children:
+            return f"{pretty(src.key)} tem subpastas: junte uma subpasta de cada vez."
+        if dst.children and not dst.assets:
+            return f"{pretty(dst.key)} só tem subpastas: escolha uma delas como principal."
+        if not [a for a in src.assets if a.kind != "missing"]:
+            return f"{pretty(src.key)} não tem itens para mover."
+        return ""
+
+    def _update_merge(self, *_):
+        src, dst = self._merge_pair()
+        self.src_card.show_cat(src)
+        self.dst_card.show_cat(dst)
+        while self.prev_lay.count():
+            it = self.prev_lay.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+            elif it.layout():
+                it.layout().deleteLater()
+        prob = self._merge_problem(src, dst)
+        self.merge_btn.setEnabled(not prob)
+        if prob:
+            self.merge_info.setText(prob)
+            self.prev_lay.addStretch(1)
+            return
+        changes = [Change(x, dst, f"vem de {pretty(src.key)}") for x in src.assets if x.kind != "missing"]
+        plan_names(changes, self.w.categories, self.w.db)
+        for ch in changes[:8]:
+            g = ui.Glass(12)
+            r = QHBoxLayout(g)
+            r.setContentsMargins(12, 8, 14, 8)
+            r.setSpacing(14)
+            r.addWidget(Thumb(ch.asset.preview, 46, 8))
+            a = QLabel(ch.asset.name)
+            a.setMinimumWidth(240)
+            r.addWidget(a)
+            r.addWidget(Arrow(40))
+            b = QLabel(ch.new_name)
+            b.setStyleSheet(f"color:{theme.HILITE.name()};")
+            r.addWidget(b, 1)
+            self.prev_lay.addWidget(g)
+        if len(changes) > 8:
+            self.prev_lay.addWidget(_small(f"e mais {len(changes) - 8} itens…", theme.MUTED, 9.5, 0))
+        self.prev_lay.addStretch(1)
+        self.merge_info.setText(f"{len(changes)} itens de {pretty(src.key)} vão para {pretty(dst.key)}. "
+                                + ("A pasta de origem será apagada se ficar vazia."))
+
     def start_merge(self):
-        a, b = self._cat(self.ca.currentData()), self._cat(self.cb.currentData())
-        if not a or not b or a.key == b.key:
-            QMessageBox.information(self, "Juntar pastas", "Escolha duas pastas diferentes.")
+        src, dst = self._merge_pair()
+        if self._merge_problem(src, dst):
             return
-        if a.key.startswith(b.key + "/") or b.key.startswith(a.key + "/"):
-            QMessageBox.information(self, "Juntar pastas", "Uma pasta está dentro da outra; escolha pastas separadas.")
-            return
-        d = QDialog(self)
-        d.setWindowTitle("Qual é a pasta principal?")
-        v = QVBoxLayout(d)
-        v.setContentsMargins(26, 22, 26, 18)
-        v.setSpacing(12)
-        q = QLabel("Qual pasta fica (a principal)? Os itens da outra vão para ela, renomeados na sequência dela.")
-        q.setWordWrap(True)
-        v.addWidget(q)
-        grp = QButtonGroup(d)
-        ra = QRadioButton(f"{pretty(a.key)}  ({len(a.all_assets())} itens)")
-        rb = QRadioButton(f"{pretty(b.key)}  ({len(b.all_assets())} itens)")
-        (ra if len(a.all_assets()) >= len(b.all_assets()) else rb).setChecked(True)
-        for r in (ra, rb):
-            grp.addButton(r)
-            v.addWidget(r)
-        bb = QDialogButtonBox()
-        ui.primary(bb.addButton("Continuar", QDialogButtonBox.AcceptRole))
-        bb.addButton("Cancelar", QDialogButtonBox.RejectRole)
-        bb.accepted.connect(d.accept)
-        bb.rejected.connect(d.reject)
-        v.addWidget(bb)
-        if d.exec() != QDialog.Accepted:
-            return
-        main, other = (a, b) if ra.isChecked() else (b, a)
-        if other.children:
-            QMessageBox.information(self, "Juntar pastas",
-                                    f"{pretty(other.key)} tem subpastas. Junte primeiro as subpastas, uma de cada vez.")
-            return
-        dest = main if main.assets or not main.children else None
-        if dest is None:
-            QMessageBox.information(self, "Juntar pastas", f"{pretty(main.key)} só tem subpastas; escolha uma delas "
-                                                           "como principal.")
-            return
-        changes = [Change(x, dest, f"vem de {pretty(other.key)}") for x in other.assets if x.kind != "missing"]
+        changes = [Change(x, dst, f"vem de {pretty(src.key)}") for x in src.assets if x.kind != "missing"]
+        if self.review(changes, f"Juntar {pretty(src.key)} em {pretty(dst.key)}",
+                       f"Os {len(changes)} itens de {pretty(src.key)} vão para {pretty(dst.key)} com os próximos "
+                       "números livres. Itens parecidos com algo que já existe vêm marcados como \"Pular\".",
+                       "juntar", merge_source=src):
+            self.refresh()
+
+    # ------------------------------------------------------------------ "Mover para…" da Biblioteca
+    def move_assets(self, assets: list[Asset], dest: Category):
+        changes = [Change(a, dest, "movido por você") for a in assets if a.kind != "missing"
+                   and a.category != dest.key]
         if not changes:
-            QMessageBox.information(self, "Juntar pastas", f"{pretty(other.key)} não tem itens para mover.")
+            QMessageBox.information(self.w, "Mover para", "Os itens escolhidos já estão nessa pasta.")
             return
-        self._review_and_apply(changes, f"Juntar {pretty(other.key)} em {pretty(main.key)}",
-                               f"Os {len(changes)} itens de {pretty(other.key)} vão para {pretty(main.key)} com os "
-                               "próximos números livres. Itens parecidos com algo que já existe vêm marcados "
-                               "como \"Pular\".", "juntar", merge_source=other)
-        self.refresh()
+        self.review(changes, f"Mover para {pretty(dest.key)}",
+                    f"{len(changes)} item(ns) vão para {pretty(dest.key)} com os próximos números livres de lá.",
+                    "mover")
+
+
+def fill_category_menu(menu: QMenu, cats: list[Category], on_pick) -> None:
+    """Menu com as categorias (as que têm subpastas abrem um submenu)."""
+    for c in cats:
+        if c.children:
+            sub = menu.addMenu(pretty(c.key.split("/")[-1]))
+            if c.assets:
+                sub.addAction(f"{pretty(c.key.split('/')[-1])} (esta pasta)", lambda c=c: on_pick(c))
+                sub.addSeparator()
+            fill_category_menu(sub, c.children, on_pick)
+        else:
+            menu.addAction(pretty(c.key.split("/")[-1]), lambda c=c: on_pick(c))
