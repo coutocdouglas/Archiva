@@ -1095,12 +1095,15 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.tabs.add(self.colecoes, "colecoes", "Coleções")
         self.entrada = EntradaPage(self)
         self.tabs.add(self.entrada, "entrada", "Entrada")
+        from .organizar import OrganizacaoPage
+        self.organizacao = OrganizacaoPage(self)
+        self.tabs.add(self.organizacao, "organizacao", "Organização")
         self.aprender = tutoriais.AprenderPage(self)
         self.aprender.open_tutorial.connect(self.show_tutorial)
         self.tabs.add(self.aprender, "aprender", "Aprender")
         self.sidebar = ui.Sidebar([("inicio", "Início", "inicio"), ("biblioteca", "Biblioteca", "biblioteca"),
                                    ("tags", "Tags", "tags"), ("colecoes", "Coleções", "colecoes"),
-                                   ("entrada", "Entrada", "entrada"),
+                                   ("entrada", "Entrada", "entrada"), ("organizacao", "Organização", "organizar"),
                                    ("aprender", "Aprender", "aprender")])
         self.sidebar.navigate.connect(lambda k: self.tabs.setCurrentWidget(self.tabs.page(k)))
         # soltar cartões em "Coleções" no menu lateral: escolhe a coleção num menu
@@ -1404,6 +1407,9 @@ class MainWindow(FramelessMixin, QMainWindow):
     def _update_user_chip(self):
         if not hasattr(self, "user_chip"):
             return
+        if hasattr(self, "sidebar") and "organizacao" in self.sidebar.buttons:
+            # Organização mexe em muitos arquivos de uma vez: só o administrador vê
+            self.sidebar.buttons["organizacao"].setVisible(self.is_admin() or self.shared.lib is None)
         if not self.profile:
             self.user_chip.setVisible(False)
             return
@@ -2042,6 +2048,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.tags_page.refresh()
         elif self.tabs.widget(i) is getattr(self, "colecoes", None):
             self.colecoes.refresh()
+        elif self.tabs.widget(i) is getattr(self, "organizacao", None):
+            self.organizacao.refresh()
 
     def _tree_item(self, key):
         # sem QTreeWidgetItemIterator: no PySide6 ele deixava a árvore instável e o programa fechava

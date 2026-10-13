@@ -2,6 +2,13 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.14.0
+- **Organização** (menu lateral, só para o administrador): arrume a biblioteca sem abrir o Explorer.
+  - **Itens fora do lugar:** "Procurar" encontra itens cujo nome não combina com a pasta (ex.: POLTRONA 09 dentro de MESAS) e sugere mover para a pasta certa com o próximo número de lá, ou renomear ali mesmo. Botão direito: escolher outra pasta ou ignorar o item.
+  - **Juntar pastas:** escolha duas pastas e qual é a principal; os itens da outra vão para ela renomeados na sequência (ex.: MATERIAL 05 → MATERIAIS E TEXTURAS 41). A pasta que ficar vazia é apagada.
+  - Sempre há uma tela de conferência antes (nome atual → nome novo, com Mover/Pular/Descartar por item), aviso de possíveis repetidos, travas para a equipe e Desfazer pelo histórico (juntar pastas desfaz tudo de uma vez). Tags e coleções acompanham os itens; o .max e as texturas dentro das pastas mantêm o nome.
+- Desfazer agora também devolve as tags e coleções ao nome antigo do item, e pastas que voltam a existir reaparecem sozinhas.
+
 ## 0.13.0
 - **Início mais rápido na rede:** a página não consulta mais o servidor a cada visita (as datas dos itens ficam no índice) e só é refeita quando algo mudou; voltar para o Início é instantâneo.
 - **Pastas exibidas** (Configurações › Biblioteca): marque e desmarque quais categorias e subcategorias aparecem no Archiva. Vale só para você; nenhum arquivo é movido ou apagado.

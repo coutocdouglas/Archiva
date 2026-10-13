@@ -74,6 +74,9 @@ class _Row(QWidget):
         if cat and cat != "_ENTRADA":
             self.dlg.w.refresh_category(cat)
         self.dlg.w.entrada.refresh()
+        w = self.dlg.w
+        if not (getattr(w, "_verify", None) and w._verify.isRunning()):
+            w._start_verify(w.cfg["library_root"])     # pastas que voltaram a existir aparecem
         self.dlg.reload()
 
 

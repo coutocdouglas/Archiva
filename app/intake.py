@@ -52,6 +52,8 @@ def scan_entry(library_root: str) -> list[Asset]:
 # --------------------------------------------------------------------------- numeração
 
 def _mtime(a: Asset) -> float:
+    if getattr(a, "added_time", 0.0):          # já lida junto com a listagem (sem ir ao servidor)
+        return a.added_time
     for p in (a.members or []) + ([a.preview] if a.preview else []):
         try:
             return os.path.getmtime(p)

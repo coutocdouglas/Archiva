@@ -23,6 +23,7 @@ _ICONS = {
     "aprender": '<path d="M12 6.5C10.3 5.2 7.9 4.7 4.5 5v13c3.4-.3 5.8.2 7.5 1.5"/>'
                 '<path d="M12 6.5c1.7-1.3 4.1-1.8 7.5-1.5v13c-3.4-.3-5.8.2-7.5 1.5z"/>',
     "fechar": '<path d="M6 6l12 12M18 6L6 18"/>',
+    "organizar": '<path d="M5 7h9M18 7h1M5 17h3M12 17h7"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
     "colecoes": '<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/>',
 }
 

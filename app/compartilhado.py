@@ -18,6 +18,9 @@ OP_NAMES = {
     "substituir": "Substituiu pela versão nova",
     "descartar": "Descartou da Entrada",
     "limpar": "Removeu arquivos extras de",
+    "mover": "Moveu",
+    "renomear": "Renomeou",
+    "juntar": "Juntou pastas:",
     "desfazer": "Desfez:",
 }
 
@@ -248,6 +251,11 @@ class Compartilhado(QObject):
                     _move(p, dest)
                     discarded.append((p, dest))
             # pastas que ficaram vazias dentro do item (ex.: MAPS criada ao organizar)
+            for old_key, new_key in ev.get("keys", []):     # tags e coleções voltam para o nome antigo
+                try:
+                    self.db.move_item_data(new_key, old_key)
+                except Exception:  # noqa: BLE001
+                    pass
             if ev.get("base"):
                 base = absolute(root, ev["base"])
                 for d in sorted({os.path.dirname(s) for s, _ in moved_back}, key=len, reverse=True):
