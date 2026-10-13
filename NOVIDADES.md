@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 0.13.0
+- **Início mais rápido na rede:** a página não consulta mais o servidor a cada visita (as datas dos itens ficam no índice) e só é refeita quando algo mudou; voltar para o Início é instantâneo.
+- **Pastas exibidas** (Configurações › Biblioteca): marque e desmarque quais categorias e subcategorias aparecem no Archiva. Vale só para você; nenhum arquivo é movido ou apagado.
+- O Início cumprimenta pelo nome do seu perfil.
+
 ## 0.12.0
 - **Coleções de projeto:** item novo no menu lateral. Junte os modelos usados em cada trabalho (ex.: "Apartamento Silva – Sala"), com anotação (cliente, endereço), arquivar e excluir. Toda a equipe vê as coleções, com quem criou.
   - Para adicionar: "Adicionar à coleção…" no painel da direita da Biblioteca, botão direito no cartão, ou arraste o cartão até "Coleções" no menu lateral.

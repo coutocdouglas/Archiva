@@ -647,6 +647,12 @@ class SettingsDialog(QDialog):
         b_test.setToolTip("Confere acesso, permissão de gravação, relógio e velocidade da pasta")
         b_test.clicked.connect(self._test_library)
         form.addRow("Pasta da biblioteca", self._row(self.root, b1, b_test))
+        b_vis = QPushButton("Escolher pastas…")
+        b_vis.clicked.connect(lambda: (window.edit_visible_folders(self), self._update_vis_label()))
+        self.vis_label = QLabel()
+        self.vis_label.setStyleSheet(f"color:{theme.FAINT.name()};")
+        form.addRow("Pastas exibidas", self._row(b_vis, self.vis_label))
+        self._update_vis_label()
         self.retention = QComboBox()
         for label, minutes in (("1 hora", 60), ("1 dia", 1440), ("7 dias", 10080), ("Nunca apagar", 0)):
             self.retention.addItem(label, minutes)
@@ -745,6 +751,10 @@ class SettingsDialog(QDialog):
     def reject(self):
         self.w._set_size(self._orig_size)
         super().reject()
+
+    def _update_vis_label(self):
+        n = len(self.w.hidden_keys())
+        self.vis_label.setText(f"{n} pasta(s) escondida(s)" if n else "todas visíveis")
 
     def _test_library(self):
         from .diagnostico import TestDialog
@@ -878,14 +888,17 @@ class MainWindow(FramelessMixin, QMainWindow):
         super().__init__()
         self.cfg = Config()
         self.cache_root = self.cfg.cache_dir
+        self.data_rev = 0                  # muda sempre que itens/tags mudam (o Início só se refaz se mudou)
         self.db = TagDB(None)              # aberto de verdade quando a biblioteca é escolhida
         self.shared = Compartilhado(self.db)
+        self.db.on_change = self._bump
         self.profile = perfil.load()
         self._bound_root = None
         self._ops: dict[str, str] = {}     # item -> "extrair" | "organizar" (para o histórico)
         self.tools = extractor.find_tool(self.cfg["unrar_path"])
         self.thumb_size = int(self.cfg["thumb_size"])
-        self.categories: list[Category] = []
+        self.categories: list[Category] = []     # categorias visíveis (sem as pastas escondidas)
+        self._all_cats: list[Category] = []      # todas (índice e conferência usam esta)
         self.cat_by_key: dict[str, Category] = {}
         self.all_assets: list[Asset] = []
         self.current_cat = ALL_KEY
@@ -1104,7 +1117,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.shared.tags_changed.connect(self._on_shared_tags)
         self.shared.items_changed.connect(self._on_shared_items)
         self.shared.locks_changed.connect(self._on_locks_changed)
-        self.entrada.count_changed.connect(lambda n: self.sidebar.buttons["entrada"].set_badge(n))
+        self.entrada.count_changed.connect(lambda n: (self.sidebar.buttons["entrada"].set_badge(n), self._bump()))
         self.tabs.currentChanged.connect(self._on_tab)
         self._update_footer()
 
@@ -1432,6 +1445,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._update_user_chip()
 
     def _on_shared_tags(self):
+        self.data_rev += 1
         self._rebuild_search_text()
         self._fill_tag_filter()
         self.details.update_completer()
@@ -1481,7 +1495,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.statusBar().showMessage("Conferindo mudanças na biblioteca…")
         self.progress.setRange(0, 0)
         self.progress.show()
-        v = indice.VerifyThread(root, list(self.categories), dict(self._sigs))
+        v = indice.VerifyThread(root, list(self._all_cats), dict(self._sigs))
         v.changed.connect(self._on_verify_changed)
         v.removed.connect(self._on_verify_removed)
         v.finished_ok.connect(self._on_verify_done)
@@ -1494,7 +1508,7 @@ class MainWindow(FramelessMixin, QMainWindow):
 
     def _on_verify_removed(self, key: str):
         self._sigs.pop(key, None)
-        self.categories = [c for c in self.categories if c.key != key]
+        self._all_cats = [c for c in self._all_cats if c.key != key]
         self._replace_category(None)
 
     def _on_verify_done(self, n: int):
@@ -1507,8 +1521,8 @@ class MainWindow(FramelessMixin, QMainWindow):
 
     def _save_index(self):
         f = getattr(self, "_index_file", None)
-        if f and self.categories:
-            indice.save(f, self.cfg["library_root"], self.categories, dict(getattr(self, "_sigs", {})))
+        if f and self._all_cats:
+            indice.save(f, self.cfg["library_root"], self._all_cats, dict(getattr(self, "_sigs", {})))
 
     def _summary(self) -> str:
         n_issue = sum(1 for a in self.all_assets if a.issues)
@@ -1520,6 +1534,7 @@ class MainWindow(FramelessMixin, QMainWindow):
                 + (f"  ·  {n_issue} com problema" if n_issue else ""))
 
     def _on_scanned(self, cats: list[Category], from_index: bool = False):
+        self.data_rev += 1
         self.progress.hide()
         if not from_index:
             self._sigs = indice.all_signatures(self.cfg["library_root"], cats)
@@ -1528,18 +1543,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not self.extractions.busy():
             extractor.clean_temp(self.cfg["library_root"])
             self._clean_backup()
-        self.categories = cats
-        self.cat_by_key = {}
-        self.all_assets = []
-
-        def walk(c: Category):
-            self.cat_by_key[c.key] = c
-            for ch in c.children:
-                walk(ch)
-
-        for c in cats:
-            walk(c)
-            self.all_assets.extend(c.all_assets())
+        self._all_cats = cats
+        self._apply_visibility()
         self._rebuild_search_text()
         self._fill_category_tree()
         self._fill_tag_filter()
@@ -1715,6 +1720,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.apply_filter()
 
     def _on_tags_changed(self):
+        self.data_rev += 1
         if hasattr(self, "home"):
             self.home.cards["tags"].set_value(len(self.db.all_tags()))
         self._rebuild_search_text(self.details.assets)
@@ -1879,7 +1885,7 @@ class MainWindow(FramelessMixin, QMainWindow):
     def refresh_category(self, top_key: str):
         """Relê só uma categoria (depois de extrair) e atualiza a tela."""
         self.__dict__.pop("_maps_count", None)
-        old = next((c for c in self.categories if c.key == top_key), None)
+        old = next((c for c in self._all_cats if c.key == top_key), None)
         if not old:
             return
         new = scan_category(old.path, old.key, old.name)
@@ -1891,26 +1897,17 @@ class MainWindow(FramelessMixin, QMainWindow):
 
     def _replace_category(self, new: Category | None):
         """Coloca a categoria relida no lugar da antiga (ou acrescenta, se for nova) e atualiza a tela."""
+        self.data_rev += 1
         self.__dict__.pop("_maps_count", None)
         if new is not None:
-            i = next((k for k, c in enumerate(self.categories) if c.key == new.key), None)
+            i = next((k for k, c in enumerate(self._all_cats) if c.key == new.key), None)
             if i is None:
-                self.categories.append(new)
+                self._all_cats.append(new)
                 from .scanner import natural_key
-                self.categories.sort(key=lambda c: natural_key(c.name))
+                self._all_cats.sort(key=lambda c: natural_key(c.name))
             else:
-                self.categories[i] = new
-        self.cat_by_key = {}
-        self.all_assets = []
-
-        def walk(c: Category):
-            self.cat_by_key[c.key] = c
-            for ch in c.children:
-                walk(ch)
-
-        for c in self.categories:
-            walk(c)
-            self.all_assets.extend(c.all_assets())
+                self._all_cats[i] = new
+        self._apply_visibility()
         self._rebuild_search_text(new.all_assets() if new is not None else None)
         self._fill_category_tree()
         self.apply_filter()
@@ -1975,12 +1972,72 @@ class MainWindow(FramelessMixin, QMainWindow):
         else:
             self.statusBar().showMessage("Selecione um ou mais itens para colocar tags.", 4000)
 
+    # ----------------------------------------------------------------- pastas escondidas (por pessoa)
+    def hidden_keys(self) -> set[str]:
+        root = os.path.normcase(os.path.normpath(self.cfg["library_root"] or ""))
+        return set((self.cfg["pastas_ocultas"] or {}).get(root, []))
+
+    def set_hidden_keys(self, keys) -> None:
+        root = os.path.normcase(os.path.normpath(self.cfg["library_root"] or ""))
+        d = dict(self.cfg["pastas_ocultas"] or {})
+        d[root] = sorted(keys)
+        self.cfg["pastas_ocultas"] = d
+
+    def _apply_visibility(self):
+        """Monta a lista visível (sem as pastas que a pessoa escondeu) e os atalhos por chave."""
+        import copy
+        hidden = self.hidden_keys()
+
+        def keep(c: Category):
+            if c.key in hidden:
+                return None
+            kids = [k for k in (keep(ch) for ch in c.children) if k is not None]
+            if kids == c.children:
+                return c
+            n = copy.copy(c)
+            n.children = kids
+            return n
+
+        self.categories = [k for k in (keep(c) for c in self._all_cats) if k is not None]
+        self.cat_by_key = {}
+        self.all_assets = []
+
+        def walk(c: Category):
+            self.cat_by_key[c.key] = c
+            for ch in c.children:
+                walk(ch)
+
+        for c in self.categories:
+            walk(c)
+            self.all_assets.extend(c.all_assets())
+        self.data_rev += 1
+
+    def edit_visible_folders(self, parent=None):
+        from .pastas_visiveis import VisibleFoldersDialog
+        d = VisibleFoldersDialog(parent or self, self._all_cats, self.hidden_keys())
+        if d.exec() != QDialog.Accepted:
+            return
+        self.set_hidden_keys(d.hidden())
+        self._apply_visibility()
+        self._rebuild_search_text()
+        self._fill_category_tree()
+        self._fill_tag_filter()
+        self.entrada.fill_categories()
+        self.home.refresh()
+        self.apply_filter()
+        n = len(d.hidden())
+        self.statusBar().showMessage(f"{n} pasta(s) escondida(s)." if n else "Todas as pastas estão visíveis.", 6000)
+
+    def _bump(self):
+        self.data_rev += 1
+
     def _on_tab(self, i):
         self.sidebar.set_current(self.tabs.key_of(self.tabs.widget(i)))
         if self.tabs.widget(i) is self.entrada:
             self.entrada.refresh()
         elif self.tabs.widget(i) is self.home:
-            self.home.refresh()
+            if getattr(self.home, "_rev", -1) != self.data_rev:     # só refaz se algo mudou
+                self.home.refresh()
         elif self.tabs.widget(i) is getattr(self, "tags_page", None):
             self.tags_page.refresh()
         elif self.tabs.widget(i) is getattr(self, "colecoes", None):

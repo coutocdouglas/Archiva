@@ -745,21 +745,13 @@ class HomePage(QWidget):
     # ----------------------------------------------------------------- dados
     def refresh(self):
         w = self.w
+        self._rev = getattr(w, "data_rev", 0)
         by_key = {a.key: a for a in w.all_assets}
-        mtimes: dict[str, float] = {}
-
         def mt(a):
-            if not a.preview:
-                return 0.0
-            if a.preview not in mtimes:
-                try:
-                    mtimes[a.preview] = os.path.getmtime(a.preview)
-                except OSError:
-                    mtimes[a.preview] = 0.0
-            return mtimes[a.preview]
+            return getattr(a, "added_time", 0.0) or 0.0
         hour = datetime.now().hour
         greet = "Bom dia" if hour < 12 else ("Boa tarde" if hour < 18 else "Boa noite")
-        user = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+        user = ((getattr(w, "profile", None) or {}).get("nome") or "").split(" ")[0]
         self.hello.setText(f"{greet}{', ' + user if user else ''}")
 
         # novidades: o que entrou pela Entrada; se ainda não houver, os arquivos mais novos da biblioteca

@@ -1,4 +1,4 @@
-ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.12.0
+ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.13.0
 =====================================================================
 
 O QUE O PROGRAMA ALTERA NA BIBLIOTECA
@@ -27,6 +27,10 @@ INSTALACAO
      Executar assim mesmo (o instalador nao tem assinatura paga).
   Configuracoes, tags e miniaturas continuam as mesmas da versao antiga.
   A pasta _GERENCIADOR em F:\MODELOS pode ficar ou ser apagada depois.
+
+PASTAS EXIBIDAS (a partir da 0.13)
+  Configuracoes > Biblioteca > Pastas exibidas: desmarque as categorias
+  que nao quer ver. Vale so para voce; nada e movido ou apagado.
 
 COLECOES (a partir da 0.12)
   - Menu lateral > Colecoes: listas de modelos por projeto, vistas por

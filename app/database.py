@@ -90,6 +90,8 @@ def journaled(fn):
             result = fn(self, *args)
         finally:
             self._depth -= 1
+        if self._depth == 0 and self.on_change is not None:
+            self.on_change()
         if self._depth == 0 and not self._replaying and self.sink is not None:
             try:
                 self.sink({"k": "db", "m": fn.__name__, "a": list(args)})
@@ -108,6 +110,7 @@ class TagDB:
     def __init__(self, path: Path | None = None) -> None:
         self.sink = None              # função que grava o evento no registro compartilhado
         self.clock = time.time        # na biblioteca compartilhada: hora do servidor
+        self.on_change = None         # avisa a janela que tags/coleções mudaram
         self.sink_errors = 0
         self._depth = 0
         self._replaying = False

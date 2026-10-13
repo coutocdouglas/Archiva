@@ -127,6 +127,7 @@ class Asset:
     layout_issues: list[str] = field(default_factory=list)   # pasta fora do padrão (botão Organizar)
     members: list[str] = field(default_factory=list)         # todos os arquivos/pastas do grupo (usado na Entrada)
     search_text: str = ""
+    added_time: float = 0.0     # data da prévia/pasta (lida junto com a listagem; usada no Início)
 
     @property
     def kind(self) -> str:
@@ -204,6 +205,7 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
     except OSError:
         return cat
 
+    mtimes: dict[str, float] = {}
     for e in entries:
         lname = e.name.casefold()
         if lname in IGNORED_FILES or os.path.splitext(lname)[1] in PARTIAL_EXT:
@@ -219,6 +221,10 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
         else:
             k = strip_key(e.name)
         g = groups.setdefault(k.casefold(), {"name": k, "images": [], "dirs": [], "archives": [], "max": [], "other": []})
+        try:
+            mtimes[e.path] = e.stat().st_mtime      # no Windows vem junto com a listagem (sem custo extra)
+        except OSError:
+            pass
         if is_dir:
             g["dirs"].append(e.path)
             continue
@@ -272,6 +278,7 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
 
         a = Asset(key=f"{key}/{nm}", name=nm, category=key)
         a.members = g["images"] + g["dirs"] + [p for p, _ in g["archives"]] + g["max"] + g["other"]
+        a.added_time = max((mtimes.get(m, 0.0) for m in a.members), default=0.0)
         a.preview = sorted(g["images"], key=lambda p: (os.path.splitext(p)[1].lower() not in (".jpg", ".jpeg", ".png"), p))[0] if g["images"] else None
 
         if folder:
