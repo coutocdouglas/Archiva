@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.0.0
+- **Archiva 1.0:** primeira versão estável. Reúne tudo o que foi feito até aqui — Biblioteca, Entrada, Tags, Coleções, Organização, perfis e trabalho em equipe na rede, histórico com desfazer, tutoriais e atualização automática. As próximas novidades partem desta versão.
+
 ## 0.14.2
 - **Adicionados recentemente (Início):** mostra só o que chegou à biblioteca por último — pela Entrada ou, nos itens antigos, pela data do arquivo baixado. Itens antigos que acabaram de ser descompactados ou organizados não aparecem mais como novos.
 

@@ -1,4 +1,4 @@
-ARCHIVA  (Gerenciador de Assets 3D)  -  versao 0.14.2
+ARCHIVA  (Gerenciador de Assets 3D)  -  versao 1.0.0
 =====================================================================
 
 O QUE O PROGRAMA ALTERA NA BIBLIOTECA
