@@ -20,7 +20,7 @@ HANDOFF_DIR = "Archiva"
 HANDOFF_FILE = "ultimo_arrasto.txt"
 
 STARTUP_SCRIPT = r"""-- Archiva: religa as texturas do item arrastado depois do Merge.
--- Instalado automaticamente pelo Archiva (gerenciador da biblioteca 3D). Pode apagar se não usar mais o Archiva.
+-- Instalado automaticamente pelo Archiva (gerenciador da biblioteca 3D). Pode apagar se nao usar mais o Archiva.
 global ArchivaRelink
 fn ArchivaRelink =
 (
@@ -78,13 +78,14 @@ fn ArchivaRelink =
 	format "   % arquivo(s) religado(s) para a pasta da biblioteca.\n" religadas
 	if faltando.count > 0 do
 	(
-		format "   % ainda faltando na cena (não estão na pasta do item):\n" faltando.count
+		format "   % ainda faltando na cena (nao estao na pasta do item):\n" faltando.count
 		for n in faltando do format "     - %\n" n
 	)
 	ok
 )
 callbacks.removeScripts id:#archiva
 callbacks.addScript #filePostMerge "ArchivaRelink()" id:#archiva
+format "-- Archiva: relink de texturas ativo (depois de cada Merge).\n"
 """
 
 
@@ -94,8 +95,10 @@ def startup_dirs() -> list[str]:
     if sys.platform != "win32" or not base:
         return []
     out = []
-    for scripts in glob.glob(os.path.join(base, "Autodesk", "3dsMax", "*", "*", "scripts")):
-        out.append(os.path.join(scripts, "startup"))
+    for lang in glob.glob(os.path.join(base, "Autodesk", "3dsMax", "*", "*")):
+        name = os.path.basename(lang)
+        if os.path.isdir(lang) and (os.path.isdir(os.path.join(lang, "scripts")) or (len(name) == 3 and name.isupper())):
+            out.append(os.path.join(lang, "scripts", "startup"))
     return sorted(set(out))
 
 
@@ -130,3 +133,33 @@ def write_handoff(name: str, dirs: list[str]) -> None:
             fh.write("\n".join([name, *[d for d in dirs[:200]]]) + "\n")
     except OSError:
         pass
+
+
+INSTALLER = r"""-- Archiva: instala o relink de texturas neste 3ds Max (arraste este arquivo para a viewport uma vez)
+(
+	local src = @"$src"
+	local dst = (getDir #userStartupScripts) + "\\archiva_texturas.ms"
+	makeDir (getDir #userStartupScripts) all:true
+	if doesFileExist dst do deleteFile dst
+	if copyFile src dst then
+	(
+		fileIn dst
+		messageBox ("Relink de texturas do Archiva instalado e ativo.\n\n" + dst) title:"Archiva"
+	)
+	else messageBox ("Nao foi possivel copiar para:\n" + dst) title:"Archiva"
+)
+"""
+
+
+def write_installer(cache_root) -> str:
+    """Gera o instalador .ms (e uma cópia do script) na pasta do cache. Devolve o caminho do instalador."""
+    from string import Template
+    folder = os.path.join(str(cache_root), "scripts")
+    os.makedirs(folder, exist_ok=True)
+    src = os.path.join(folder, SCRIPT_NAME)
+    with open(src, "w", encoding="utf-8") as fh:
+        fh.write(STARTUP_SCRIPT)
+    inst = os.path.join(folder, "Instalar Archiva no 3ds Max.ms")
+    with open(inst, "w", encoding="utf-8") as fh:
+        fh.write(Template(INSTALLER).substitute(src=src))
+    return inst

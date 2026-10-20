@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.1.3
+- **Instalar o relink de texturas pelo próprio 3ds Max:** em Configurações › Uso há um botão "Arraste para o 3ds Max". Arraste-o uma vez para a viewport: o Max instala o script na pasta de inicialização dele e já o ativa, sem reabrir. Serve para computadores em que o Archiva não achou a pasta de scripts do Max sozinho.
+- Ao abrir o Max, o Listener (F11) mostra "Archiva: relink de texturas ativo", para conferir que está funcionando.
+- A instalação automática agora também funciona quando a pasta de scripts do Max ainda não existe.
+- Corrigido: um arquivo de teste tinha entrado por engano no código-fonte da 1.1.1 (não afetava o programa).
+
 ## 1.1.2
 - **Tela de abertura:** ao abrir o Archiva, a logo surge letra por letra enquanto a biblioteca é lida, com a versão e o nome do autor no canto. Quando a leitura termina, a abertura esmaece e o programa aparece. Ela fica pelo menos 1,8 s na tela; se a leitura passar de 8 s, o programa abre mesmo assim.
 - **Dá para desligar** em Configurações › Uso › Abertura.

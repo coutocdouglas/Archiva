@@ -395,6 +395,38 @@ class ImageViewer(QDialog):
             super().keyPressEvent(e)
 
 
+class MaxInstallButton(QPushButton):
+    """Botão que se ARRASTA para a viewport do 3ds Max: leva o instalador do relink de texturas."""
+
+    def __init__(self, window):
+        super().__init__("⇲  Arraste para o 3ds Max: instalar relink de texturas")
+        self.w = window
+        self._press = None
+        self.setCursor(Qt.OpenHandCursor)
+        self.setToolTip("Arraste este botão para a viewport do 3ds Max (não precisa clicar).")
+
+    def mousePressEvent(self, e):
+        self._press = e.position().toPoint()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._press is None or (e.position().toPoint() - self._press).manhattanLength() < 8:
+            return super().mouseMoveEvent(e)
+        self._press = None
+        from . import max_startup
+        path = max_startup.write_installer(self.w.cache_root)
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(path)])
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.exec(Qt.CopyAction)
+        self.setDown(False)
+
+    def mouseReleaseEvent(self, e):
+        self._press = None
+        super().mouseReleaseEvent(e)
+
+
 def variation_order(files: list[str]) -> list[str]:
     """Ordena as variações juntando cada 'X WIRE' logo depois de 'X' (CHAIR, CHAIR WIRE, OTTOMAN, …)."""
     import re as _re
@@ -782,10 +814,12 @@ class SettingsDialog(QDialog):
         mx_txt = ("Relink de texturas instalado no 3ds Max " + ", ".join(vers)
                   + ". Vale no Merge; abra o Max de novo depois de instalar.") if vers else \
             "3ds Max não encontrado neste computador: o relink automático de texturas não foi instalado."
-        mx_lbl = QLabel(mx_txt)
+        mx_lbl = QLabel(mx_txt + " Se as texturas não vierem no Merge, arraste o botão abaixo para a viewport "
+                        "do 3ds Max uma vez: o próprio Max instala e já ativa o relink.")
         mx_lbl.setWordWrap(True)
         mx_lbl.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
         form.addRow("", mx_lbl)
+        form.addRow("", MaxInstallButton(window))
         self.size = QSlider(Qt.Horizontal)
         self.size.setRange(120, 300)
         self.size.setValue(window.thumb_size)
