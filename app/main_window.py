@@ -774,10 +774,18 @@ class SettingsDialog(QDialog):
 
         form = section("Uso")
         self.drag = QComboBox()
-        self.drag.addItem("Merge com texturas (religa as texturas na pasta da biblioteca)", "script")
-        self.drag.addItem("Arquivo .max (o Max mostra Abrir / Merge / XRef; texturas não são religadas)", "max")
-        self.drag.setCurrentIndex(1 if window.cfg["drag_mode"] == "max" else 0)
+        self.drag.addItem("Arquivo .max: o Max mostra Merge / XRef e você posiciona com o mouse", "max")
+        self.drag.addItem("Merge direto por script (sem janela; o item entra na posição original)", "script")
+        self.drag.setCurrentIndex(0 if window.cfg["drag_mode"] == "max" else 1)
         form.addRow("Ao arrastar para o 3ds Max", self.drag)
+        vers = getattr(window, "max_versions", [])
+        mx_txt = ("Relink de texturas instalado no 3ds Max " + ", ".join(vers)
+                  + ". Vale no Merge; abra o Max de novo depois de instalar.") if vers else \
+            "3ds Max não encontrado neste computador: o relink automático de texturas não foi instalado."
+        mx_lbl = QLabel(mx_txt)
+        mx_lbl.setWordWrap(True)
+        mx_lbl.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
+        form.addRow("", mx_lbl)
         self.size = QSlider(Qt.Horizontal)
         self.size.setRange(120, 300)
         self.size.setValue(window.thumb_size)
@@ -997,9 +1005,11 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.thumbs = ThumbnailCache(self.cache_root)
         scanner_mod.UNWANTED_EXT = extractor._norm_exts(self.cfg["unwanted_ext"])
         self.passwords: list[str] = self.cfg.values.setdefault("passwords", [])
-        if not self.cfg.values.get("drag_script_1_0_3"):   # 1.0.3: arrastar com texturas religadas vira o padrão
-            self.cfg.values["drag_mode"] = "script"
-            self.cfg.values["drag_script_1_0_3"] = True
+        if not self.cfg.values.get("drag_max_1_1_1"):   # 1.1.1: volta o .max puro (o Max posiciona pelo mouse);
+            self.cfg.values["drag_mode"] = "max"          # o relink fica com o script de inicialização do Max
+            self.cfg.values["drag_max_1_1_1"] = True
+        from . import max_startup
+        self.max_versions = max_startup.install()
         self._pwd_tries: dict[str, int] = {}
         self.extractions = ExtractionManager(self.cfg["library_root"], self.tools, list(self.cfg["unwanted_ext"]),
                                              self.passwords)
@@ -1860,6 +1870,9 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not mx:
             self.statusBar().showMessage(f"{a.name}: nenhum arquivo .max encontrado dentro.", 6000)
             return None
+        if self.cfg["drag_mode"] != "script":
+            from . import max_startup
+            max_startup.write_handoff(a.name, extractor.map_dirs(a))   # o script do Max religa depois do Merge
         if self.cfg["drag_mode"] == "script":
             self.db.record_use(a.key)
             label = a.name if not max_file else f"{a.name} - {os.path.splitext(os.path.basename(mx))[0]}"

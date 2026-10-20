@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.1.1
+- **Arrastar para o Max volta a ser como antes:** o Max mostra a janela Merge / XRef e você posiciona o item com o mouse (na 1.1.0 ele caía no 0,0,0).
+- **Texturas continuam sendo religadas, agora pelo próprio Max:** o Archiva instala um pequeno script na pasta de inicialização de cada 3ds Max do computador. Depois de um **Merge**, ele liga as texturas que estão faltando na cena à pasta do item arrastado (só as que faltam; o resto da cena não é tocado). Feche e abra o Max uma vez para o script começar a valer. O resumo aparece no MAXScript Listener (F11). No XRef as texturas não são religadas.
+- O merge direto por script (sem janela) continua em Configurações › Uso, para quem preferir.
+
 ## 1.1.0
 - **Texturas já ligadas ao entrar na cena:** ao arrastar um item para o 3ds Max, o Archiva faz o merge e aponta cada textura (Bitmap, CoronaBitmap, VRayBitmap) e cada proxy (Corona/V-Ray) para a pasta do item na biblioteca. O caminho fica salvo na cena, sem relink, mesmo depois de fechar e reabrir o Max. O resumo (religadas / não encontradas) aparece no MAXScript Listener (F11).
 - **"Merge com texturas" passa a ser o modo de arrastar de todos.** Antes, o padrão arrastava o .max puro, e aí o Max fazia o merge sem religar nada. Dá para voltar em Configurações › Uso.

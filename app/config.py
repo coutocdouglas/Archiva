@@ -48,7 +48,7 @@ DEFAULTS = {
     "library_root": "",
     "cache_dir": "",
     "thumb_size": 170,
-    "drag_mode": "script",       # "script" = merge com texturas já religadas | "max" = arrasta o .max
+    "drag_mode": "max",          # "max" = .max puro (Merge/XRef do Max + relink pelo script de inicialização) | "script" = merge direto no 0,0,0
     "backup_minutes": 60,         # compactados originais ficam no backup por este tempo (0 = nunca apagar)
     "unwanted_ext": [".fbx", ".obj", ".mtl"],
     "passwords": [],              # senhas de compactados já usadas (testadas automaticamente)
