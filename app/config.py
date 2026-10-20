@@ -63,6 +63,7 @@ DEFAULTS = {
     "skip_version": "",           # versão que o usuário mandou ignorar
     "pastas_ocultas": {},         # por biblioteca: categorias que esta pessoa escondeu
     "tutorial_off": False,        # boas-vindas ao abrir desligadas
+    "abertura_off": False,        # tela de abertura (logo animada) desligada
     "tutoriais_vistos": [],
     "versao_vista": "",           # última versão aberta (para mostrar as novidades)
     "window_geometry": "",

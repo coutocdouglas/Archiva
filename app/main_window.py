@@ -802,6 +802,9 @@ class SettingsDialog(QDialog):
         self.intro = QCheckBox("Mostrar as boas-vindas ao abrir o Archiva")
         self.intro.setChecked(not window.cfg["tutorial_off"])
         form.addRow("Tutorial", self.intro)
+        self.abertura = QCheckBox("Mostrar a tela de abertura (logo animada) ao abrir o Archiva")
+        self.abertura.setChecked(not window.cfg["abertura_off"])
+        form.addRow("Abertura", self.abertura)
 
         form = section("Tags")
         exp = QPushButton("Exportar tags (backup)…")
@@ -976,6 +979,8 @@ class CategoryDelegate(QStyledItemDelegate):
 # =========================================================================== janela principal
 
 class MainWindow(FramelessMixin, QMainWindow):
+    pronto = Signal()      # a leitura da biblioteca terminou (a tela de abertura espera por isto)
+
     def __init__(self):
         super().__init__()
         self.cfg = Config()
@@ -1449,8 +1454,12 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._scan.progress.connect(lambda i, n, name: (self.progress.setRange(0, n), self.progress.setValue(i),
                                                         self.statusBar().showMessage(f"Lendo {name}…  ({i}/{n})")))
         self._scan.done.connect(self._on_scanned)
-        self._scan.failed.connect(lambda m: QMessageBox.warning(self, "Erro ao ler biblioteca", m))
+        self._scan.failed.connect(self._scan_failed)
         self._scan.start()
+
+    def _scan_failed(self, msg: str):
+        self.pronto.emit()
+        QMessageBox.warning(self, "Erro ao ler biblioteca", msg)
 
     def _bind_library(self, root: str):
         self.statusBar().showMessage("Lendo tags e histórico da biblioteca…")
@@ -1680,10 +1689,14 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not getattr(self, "_intro_done", False):
             self._intro_done = True
             QTimer.singleShot(500, self._intro)
+        self.pronto.emit()
 
     # ----------------------------------------------------------------- tutoriais
     def _intro(self):
         """Boas-vindas (até a pessoa desligar) ou, depois de atualizar, só o que é novo."""
+        if not self.isVisible():          # a tela de abertura ainda está na frente: espera a janela aparecer
+            QTimer.singleShot(300, self._intro)
+            return
         last = self.cfg["versao_vista"]
         cur = version()
         self.cfg["versao_vista"] = cur
@@ -2465,6 +2478,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.cfg.values["thumb_size"] = self.thumb_size
         self.cfg.values["titlebar"] = d.titlebar.currentData()
         self.cfg.values["tutorial_off"] = not d.intro.isChecked()
+        self.cfg.values["abertura_off"] = not d.abertura.isChecked()
         self.cfg.values["check_updates"] = d.check_upd.isChecked()
         self.cfg.values["expand_subfolders"] = [x.strip() for x in d.expand.text().split(",") if x.strip()]
         self.entrada.fill_categories()

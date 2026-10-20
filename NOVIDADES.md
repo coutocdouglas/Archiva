@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.1.2
+- **Tela de abertura:** ao abrir o Archiva, a logo surge letra por letra enquanto a biblioteca é lida, com a versão e o nome do autor no canto. Quando a leitura termina, a abertura esmaece e o programa aparece. Ela fica pelo menos 1,8 s na tela; se a leitura passar de 8 s, o programa abre mesmo assim.
+- **Dá para desligar** em Configurações › Uso › Abertura.
+- Na primeira abertura (escolha de perfil e de pasta) e quando há perguntas no caminho, a abertura não atrapalha: ela sai da frente.
+
 ## 1.1.1
 - **Arrastar para o Max volta a ser como antes:** o Max mostra a janela Merge / XRef e você posiciona o item com o mouse (na 1.1.0 ele caía no 0,0,0).
 - **Texturas continuam sendo religadas, agora pelo próprio Max:** o Archiva instala um pequeno script na pasta de inicialização de cada 3ds Max do computador. Depois de um **Merge**, ele liga as texturas que estão faltando na cena à pasta do item arrastado (só as que faltam; o resto da cena não é tocado). Feche e abra o Max uma vez para o script começar a valer. O resumo aparece no MAXScript Listener (F11). No XRef as texturas não são religadas.

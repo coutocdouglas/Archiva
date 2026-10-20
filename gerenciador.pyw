@@ -41,9 +41,56 @@ def main():
     from PySide6.QtGui import QIcon
     from app.config import app_dir
     app.setWindowIcon(QIcon(str(app_dir() / "app" / "recursos" / "icone.png")))
-    w = MainWindow()
-    w.show()
+    abertura = _abrir_abertura()
+    try:
+        w = MainWindow()
+    except Exception:
+        if abertura is not None:
+            abertura.close()
+        raise
+    app._janela, app._abertura = w, abertura       # mantém as referências vivas
+    if abertura is None:
+        w.show()
+    else:
+        _ligar_abertura(w, abertura)
     sys.exit(app.exec())
+
+
+def _abrir_abertura():
+    """Mostra a tela de abertura só quando o programa vai direto à biblioteca (nada de perguntas no caminho)."""
+    import os
+
+    from app import perfil
+    from app.config import Config
+    try:
+        cfg = Config()
+        if cfg["abertura_off"] or cfg.first_run or not perfil.load() or not os.path.isdir(cfg["library_root"] or ""):
+            return None
+        from PySide6.QtWidgets import QApplication
+
+        from app.abertura import Abertura
+        a = Abertura()
+        a.comecar()
+        QApplication.processEvents()
+        return a
+    except Exception:  # noqa: BLE001 — a abertura é enfeite: se falhar, o programa abre normalmente
+        return None
+
+
+def _ligar_abertura(w, abertura):
+    from PySide6.QtCore import QTimer
+
+    from app.abertura import LIMITE_MS
+
+    def mostrar():
+        w.show()
+        w.raise_()
+        w.activateWindow()
+
+    abertura.configurar(mostrar)
+    abertura.reiniciar_relogio()                    # a montagem da janela principal não conta na animação
+    w.pronto.connect(abertura.terminar)
+    QTimer.singleShot(LIMITE_MS, abertura.terminar)  # leitura demorada: abre mesmo assim
 
 
 if __name__ == "__main__":
