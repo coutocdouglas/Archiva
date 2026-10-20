@@ -162,7 +162,7 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
     root = w.cfg["library_root"]
     todo = [c for c in changes if c.action in ("move", "discard")]
     tops = sorted({c.asset.key.split("/")[0] for c in todo} | {c.dest.key.split("/")[0] for c in todo})
-    locks = [f"cat:{t}" for t in tops]
+    locks = [f"cat:{t}" for t in tops] + sorted({c.asset.key for c in todo})   # categorias + cada item mexido
     got, busy = w.try_lock(locks, "organizando pastas")
     if busy:
         for k in got:

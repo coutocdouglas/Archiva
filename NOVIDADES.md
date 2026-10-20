@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.0.1
+- **Trava mostra quem está com o item:** quando alguém da rede está mexendo num item ou categoria, o aviso diz o nome, o computador e desde que horas (ex.: "Maria (PC-02) está extraindo desde 13:40"). A trava continua impedindo a ação. Vale também para "Mover para…", que agora trava cada item movido.
+- **Campo de tags sempre vazio:** depois de aplicar uma tag, o campo não traz mais a última tag escrita ao passar para outro item.
+
 ## 1.0.0
 - **Archiva 1.0:** primeira versão estável. Reúne tudo o que foi feito até aqui — Biblioteca, Entrada, Tags, Coleções, Organização, perfis e trabalho em equipe na rede, histórico com desfazer, tutoriais e atualização automática. As próximas novidades partem desta versão.
 

@@ -502,6 +502,8 @@ class DetailsPanel(QWidget):
         self.completer_model.setStringList([t for t, _ in self.w.db.all_tags()])
 
     def set_assets(self, assets: list[Asset]):
+        if [a.key for a in assets] != [a.key for a in self.assets]:
+            self._clear_tag_input()
         self.assets = assets
         enabled = bool(assets)
         for wdg in (self.tag_input, self.tag_list, self.btn_open, self.files):
@@ -572,7 +574,8 @@ class DetailsPanel(QWidget):
             self.col_info.setText(f"{len(a_list)} itens selecionados vão juntos para a coleção.")
         free = [a for a in a_list if not self.w.shared.lock_of(a.key)]
         if len(a_list) == 1 and not free:
-            self.hint.setText(f"Em uso: {self.w.lock_text(a_list[0].key)}. Os botões voltam quando terminar.")
+            self.hint.setText(f"Em uso: {self.w.lock_text(a_list[0].key)}. Os botões voltam quando terminar. "
+                              "Se a pessoa esqueceu aberto, fale com ela.")
         can_prepare = any(a.kind == "archive" and not self.w.extractions.is_queued(a)
                           and not self.w.extractions.is_running(a) for a in free)
         can_org = any(self.w.layout_issues(a) and not self.w.extractions.is_running(a)
@@ -593,10 +596,16 @@ class DetailsPanel(QWidget):
         if not tags or not self.assets:
             return
         self.w.db.add_tags([a.key for a in self.assets], tags)
-        self.tag_input.clear()
+        self._clear_tag_input()
         self.update_completer()
         self.refresh()
         self.tags_changed.emit()
+
+    def _clear_tag_input(self):
+        # O QCompleter do Qt escreve a sugestão escolhida no campo DEPOIS do Enter; por isso limpa de novo
+        # logo em seguida, senão a última tag volta escrita ao passar para outro item.
+        self.tag_input.clear()
+        QTimer.singleShot(0, self.tag_input.clear)
 
     def _remove_clicked(self, item: QListWidgetItem):
         tag = item.data(Qt.UserRole)
@@ -1481,7 +1490,26 @@ class MainWindow(FramelessMixin, QMainWindow):
         info = self.shared.lock_of(key)
         if not info:
             return ""
-        return f"{info.get('nome', '?')} está {info.get('op', 'mexendo')}"
+        return self.lock_who(info)
+
+    @staticmethod
+    def lock_who(info: dict | None) -> str:
+        """'Maria (PC-02) está extraindo desde 13:40' — quem está com o item e há quanto tempo."""
+        info = info or {}
+        quem = info.get("nome") or "?"
+        if info.get("pc"):
+            quem += f" ({info['pc']})"
+        txt = f"{quem} está {info.get('op', 'mexendo')}"
+        t = info.get("t")
+        if isinstance(t, (int, float)) and t > 0:
+            try:
+                from datetime import datetime
+                dt = datetime.fromtimestamp(t)
+                hoje = dt.date() == datetime.now().date()
+                txt += " desde " + dt.strftime("%H:%M" if hoje else "%d/%m %H:%M")
+            except (OSError, OverflowError, ValueError):
+                pass
+        return txt
 
     def try_lock(self, keys: list[str], op: str) -> tuple[list[str], list[str]]:
         """Trava cada chave; devolve (travadas, mensagens de quem já está usando)."""
@@ -1491,7 +1519,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             if ok:
                 got.append(k)
             else:
-                busy.append(f"{k.split('/')[-1]}: {info.get('nome', '?')} está {info.get('op', 'mexendo')} agora")
+                nome = ("categoria " + k[4:]) if k.startswith("cat:") else k.split("/")[-1]
+                busy.append(f"{nome}: {self.lock_who(info)}")
         return got, busy
 
     def log_op(self, *a, **kw):
