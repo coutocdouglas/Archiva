@@ -395,6 +395,75 @@ class ImageViewer(QDialog):
             super().keyPressEvent(e)
 
 
+def variation_order(files: list[str]) -> list[str]:
+    """Ordena as variações juntando cada 'X WIRE' logo depois de 'X' (CHAIR, CHAIR WIRE, OTTOMAN, …)."""
+    import re as _re
+
+    def key(f):
+        stem = os.path.splitext(os.path.basename(f))[0]
+        wire = bool(_re.search(r"[\s_\-]wire(?=[\s_\-]|$)", stem, _re.I))
+        base = _re.sub(r"[\s_\-]wire(?=[\s_\-]|$)", "", stem, flags=_re.I)
+        return (base.casefold(), wire, stem.casefold())
+    return sorted(files, key=key)
+
+
+class VariationList(QListWidget):
+    """Arquivos .max do item com a miniatura de cada um (o .jpg com o mesmo nome, quando existe).
+    Arrastar um deles leva aquela variação para o 3ds Max (com o mesmo script de texturas do cartão)."""
+    ICON = 64
+
+    def __init__(self, panel):
+        super().__init__()
+        self.panel = panel
+        self.asset: Asset | None = None
+        self.setDragEnabled(True)
+        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.setIconSize(QSize(self.ICON, self.ICON))
+        self.setToolTip("Arraste para o 3ds Max · duplo clique mostra no Explorer")
+        self.setStyleSheet("QListWidget{color:#d8cfc2; background:transparent; border:none;}"
+                           "QListWidget::item{padding:4px 2px; border-radius:8px;}"
+                           "QListWidget::item:hover{background:rgba(255,230,200,0.08);}")
+
+    def fill(self, a: Asset, thumbs):
+        self.asset = a
+        files = a.max_files if a.kind in ("folder", "max") else []
+        main = extractor.primary_max(a)
+        for f in variation_order(files):
+            stem = os.path.splitext(f)[0]
+            img = next((stem + e for e in (".jpg", ".jpeg", ".png", ".JPG", ".PNG") if os.path.exists(stem + e)),
+                       None) if len(files) > 1 else None
+            label = os.path.splitext(os.path.basename(f))[0] + ("   · principal" if f == main and len(files) > 1 else "")
+            it = QListWidgetItem(label)
+            it.setData(Qt.UserRole, f)
+            it.setToolTip(f)
+            pix = QPixmap(img) if img else None
+            if pix is not None and not pix.isNull():
+                it.setIcon(QIcon(pix.scaled(self.ICON, self.ICON, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
+            self.addItem(it)
+
+    def fit(self):
+        n = self.count()
+        has_icons = any(not self.item(i).icon().isNull() for i in range(n))
+        row = (self.ICON + 10) if has_icons else 26
+        self.setFixedHeight(min(4 if has_icons else 6, max(n, 1)) * row + 6)
+
+    def startDrag(self, actions):
+        it = self.currentItem()
+        if it is None or self.asset is None:
+            return
+        w = self.panel.w
+        path = w.drag_path_for(self.asset, it.data(Qt.UserRole))
+        if not path:
+            return
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(path)])
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        if not it.icon().isNull():
+            drag.setPixmap(it.icon().pixmap(self.ICON, self.ICON))
+        drag.exec(Qt.CopyAction)
+
+
 class DetailsPanel(QWidget):
     tags_changed = Signal()
 
@@ -489,12 +558,12 @@ class DetailsPanel(QWidget):
 
         self.files_head = ui.heading("Arquivos .max", 11.5)
         lay.addWidget(self.files_head)
-        self.files = QListWidget()
-        self.files.setMaximumHeight(90)
-        self.files.setDragEnabled(True)
+        self.files_hint = QLabel("Arraste uma variação para a viewport do 3ds Max. O cartão leva a principal.")
+        self.files_hint.setWordWrap(True)
+        self.files_hint.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
+        lay.addWidget(self.files_hint)
+        self.files = VariationList(self)
         self.files.itemDoubleClicked.connect(lambda it: self.w.reveal(it.data(Qt.UserRole)))
-        self.files.setToolTip("Duplo clique para mostrar no Explorer")
-        self.files.setStyleSheet("QListWidget{color:#a89c8c;} QListWidget::item{padding:3px 2px;}")
         lay.addWidget(self.files)
         lay.addStretch(1)
         self.set_assets([])
@@ -531,6 +600,7 @@ class DetailsPanel(QWidget):
             self.col_info.setText("")
             self.files_head.setVisible(False)
             self.files.setVisible(False)
+            self.files_hint.setVisible(False)
             return
         if len(a_list) == 1:
             a = a_list[0]
@@ -542,11 +612,7 @@ class DetailsPanel(QWidget):
             self.status.setText(self.w.status_html(a))
             self.hint.setText("Arraste o cartão para a viewport do 3ds Max." if self.w.extractions.is_ready(a)
                               else "Extraia para poder arrastar para o 3ds Max.")
-            for f in a.max_files if a.kind in ("folder", "max") else []:
-                it = QListWidgetItem(os.path.basename(f))
-                it.setData(Qt.UserRole, f)
-                it.setToolTip(f)
-                self.files.addItem(it)
+            self.files.fill(a, self.w.thumbs)
             tags = sorted(self.w.db.tags_of(a.key))
             counts = {t: 1 for t in tags}
         else:
@@ -561,9 +627,12 @@ class DetailsPanel(QWidget):
                 for t in self.w.db.tags_of(a.key):
                     counts[t] = counts.get(t, 0) + 1
             tags = sorted(counts)
-        self.files_head.setVisible(self.files.count() > 0)
-        self.files.setVisible(self.files.count() > 0)
-        self.files.setMaximumHeight(min(90, 26 * self.files.count() + 6))
+        n = self.files.count()
+        self.files_head.setText(f"Variações ({n})" if n > 1 else "Arquivo .max")
+        self.files_head.setVisible(n > 0)
+        self.files.setVisible(n > 0)
+        self.files_hint.setVisible(n > 1)
+        self.files.fit()
         for t in tags:
             label = f"{t}   ✕" if counts[t] == len(a_list) else f"{t} ({counts[t]})   ✕"
             it = QListWidgetItem(label)
@@ -705,9 +774,9 @@ class SettingsDialog(QDialog):
 
         form = section("Uso")
         self.drag = QComboBox()
-        self.drag.addItem("Arquivo .max (o Max mostra Abrir / Merge / XRef)", "max")
-        self.drag.addItem("Merge com texturas (script que já aponta a MAPS)", "script")
-        self.drag.setCurrentIndex(0 if window.cfg["drag_mode"] == "max" else 1)
+        self.drag.addItem("Merge com texturas (religa as texturas na pasta da biblioteca)", "script")
+        self.drag.addItem("Arquivo .max (o Max mostra Abrir / Merge / XRef; texturas não são religadas)", "max")
+        self.drag.setCurrentIndex(1 if window.cfg["drag_mode"] == "max" else 0)
         form.addRow("Ao arrastar para o 3ds Max", self.drag)
         self.size = QSlider(Qt.Horizontal)
         self.size.setRange(120, 300)
@@ -928,6 +997,9 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.thumbs = ThumbnailCache(self.cache_root)
         scanner_mod.UNWANTED_EXT = extractor._norm_exts(self.cfg["unwanted_ext"])
         self.passwords: list[str] = self.cfg.values.setdefault("passwords", [])
+        if not self.cfg.values.get("drag_script_1_0_3"):   # 1.0.3: arrastar com texturas religadas vira o padrão
+            self.cfg.values["drag_mode"] = "script"
+            self.cfg.values["drag_script_1_0_3"] = True
         self._pwd_tries: dict[str, int] = {}
         self.extractions = ExtractionManager(self.cfg["library_root"], self.tools, list(self.cfg["unwanted_ext"]),
                                              self.passwords)
@@ -1777,20 +1849,22 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.details.set_assets(self.selected_assets())
 
     # ----------------------------------------------------------------- arrastar
-    def drag_path_for(self, a: Asset) -> str | None:
+    def drag_path_for(self, a: Asset, max_file: str | None = None) -> str | None:
         if a.kind == "missing":
             self.statusBar().showMessage(f"{a.name}: arquivo do modelo não encontrado.", 6000)
             return None
         if a.kind == "archive":
             self.statusBar().showMessage(f"{a.name} está compactado. Use 'Extrair para a biblioteca' primeiro.", 8000)
             return None
-        mx = extractor.primary_max(a)
+        mx = max_file or extractor.primary_max(a)
         if not mx:
             self.statusBar().showMessage(f"{a.name}: nenhum arquivo .max encontrado dentro.", 6000)
             return None
         if self.cfg["drag_mode"] == "script":
             self.db.record_use(a.key)
-            return str(write_merge_script(a.name, a.key, mx, extractor.map_dirs(a), self.cache_root))
+            label = a.name if not max_file else f"{a.name} - {os.path.splitext(os.path.basename(mx))[0]}"
+            key = a.key if not max_file else f"{a.key} - {os.path.splitext(os.path.basename(mx))[0]}"
+            return str(write_merge_script(label, key, mx, extractor.map_dirs(a), self.cache_root))
         self.db.record_use(a.key)
         return mx
 
@@ -2154,7 +2228,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         mx = extractor.primary_max(a) if a.kind in ("folder", "max") else None
         if mx:
             n = len(a.max_files)
-            rows.append(("Arquivo", os.path.basename(mx) + (f"  (+{n - 1})" if n > 1 else "")))
+            rows.append(("Arquivo", os.path.basename(mx) + (f"  ·  {n} variações" if n > 1 else "")))
         if a.folder:
             cache = self.__dict__.setdefault("_maps_count", {})
             if a.folder not in cache:

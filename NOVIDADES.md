@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.1.0
+- **Texturas já ligadas ao entrar na cena:** ao arrastar um item para o 3ds Max, o Archiva faz o merge e aponta cada textura (Bitmap, CoronaBitmap, VRayBitmap) e cada proxy (Corona/V-Ray) para a pasta do item na biblioteca. O caminho fica salvo na cena, sem relink, mesmo depois de fechar e reabrir o Max. O resumo (religadas / não encontradas) aparece no MAXScript Listener (F11).
+- **"Merge com texturas" passa a ser o modo de arrastar de todos.** Antes, o padrão arrastava o .max puro, e aí o Max fazia o merge sem religar nada. Dá para voltar em Configurações › Uso.
+- **Variações no mesmo item:** pastas com vários .max do mesmo modelo (ex.: CHAIR, CHAIR WIRE, OTTOMAN, SET) mostram no painel a lista "Variações", com a miniatura de cada uma e as versões WIRE logo depois da normal. Arraste a variação que quiser para o Max; o cartão continua levando a principal.
+- **Escolha da variação principal:** prefere Corona, depois a versão que não é WIRE e, entre essas, o maior arquivo (num conjunto, costuma ser o SET completo).
+
 ## 1.0.2
 - **Comparar pasta e compactado:** quando um item existe como pasta e como compactado com o mesmo nome, o botão "Comparar pasta e compactado…" (no painel e no botão direito) mostra os arquivos iguais, os diferentes e os que só existem de um lado, sem extrair nada. Você escolhe: manter a pasta, manter o compactado ou ficar com os dois (o compactado vira um item novo com o próximo número). O que sai vai para _DESCARTADOS e dá para desfazer.
 - **Excluir item (administrador):** botão direito › "Excluir item…", sempre com confirmação. O item some da biblioteca, das tags e das coleções. Os arquivos vão para _DESCARTADOS e, até o prazo do backup, o Histórico desfaz tudo, inclusive as tags e coleções.

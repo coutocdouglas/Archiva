@@ -91,13 +91,22 @@ def find_max_files(folder: str, max_depth: int = 4) -> list[str]:
 
 
 def pick_primary(max_files: list[str]) -> str | None:
-    """Escolhe o .max principal: prefere nomes com 'corona', depois o mais raso."""
+    """Escolhe o .max principal (o que o cartão leva para o Max): prefere nomes com 'corona', depois os que não
+    são versão WIRE e, entre esses, o maior arquivo (num conjunto, costuma ser o SET completo)."""
     if not max_files:
         return None
-    for f in max_files:
-        if "corona" in os.path.basename(f).casefold():
-            return f
-    return max_files[0]
+
+    def size(f):
+        try:
+            return os.path.getsize(f)
+        except OSError:
+            return 0
+
+    def score(f):
+        stem = os.path.splitext(os.path.basename(f))[0].casefold()
+        wire = bool(re.search(r"(^|[\s_\-])wire($|[\s_\-])", stem))
+        return ("corona" in stem, not wire, size(f))
+    return max(max_files, key=score)
 
 
 def first_image_in(folder: str) -> str | None:
