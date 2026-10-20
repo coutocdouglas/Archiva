@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -437,7 +438,10 @@ class DetailsPanel(QWidget):
         self.btn_organize.clicked.connect(lambda: self.w.request_organize(self.assets))
         self.btn_open = QPushButton("Abrir pasta")
         self.btn_open.clicked.connect(self._open)
-        for b in (self.btn_prepare, self.btn_organize, self.btn_open):
+        self.btn_compare = QPushButton("Comparar pasta e compactado…")
+        self.btn_compare.setToolTip("O item existe como pasta e como compactado: compare e escolha o que fica.")
+        self.btn_compare.clicked.connect(lambda: self.assets and self.w.compare_duplicate(self.assets[0]))
+        for b in (self.btn_prepare, self.btn_organize, self.btn_compare, self.btn_open):
             b.setCursor(Qt.PointingHandCursor)
             b.setMinimumHeight(40)
             lay.addWidget(b)
@@ -582,6 +586,8 @@ class DetailsPanel(QWidget):
                       and not self.w.extractions.is_queued(a) for a in free)
         self.btn_prepare.setVisible(can_prepare)
         self.btn_organize.setVisible(can_org)
+        self.btn_compare.setVisible(len(free) == 1 and len(a_list) == 1 and bool(a_list[0].folder)
+                                    and bool(a_list[0].dup_archive))
         self.btn_open.setVisible(True)
         self.col_btn.setEnabled(True)
         main = self.btn_prepare if can_prepare else (self.btn_organize if can_org else self.btn_open)
@@ -2230,7 +2236,76 @@ class MainWindow(FramelessMixin, QMainWindow):
         from .organizar import fill_category_menu
         mv = m.addMenu("Mover para…")
         fill_category_menu(mv, self.categories, lambda c: self.organizacao.move_assets(sel, c))
+        if len(sel) == 1 and a.folder and a.dup_archive:
+            m.addAction("Comparar pasta e compactado…", lambda: self.compare_duplicate(a))
+        if self.is_admin() or self.shared.lib is None:
+            m.addSeparator()
+            m.addAction(f"Excluir {len(sel)} itens…" if len(sel) > 1 else "Excluir item…",
+                        lambda: self.delete_assets(sel))
         m.exec(self.grid.viewport().mapToGlobal(pos))
+
+    def compare_duplicate(self, a: Asset):
+        from . import duplicado
+        duplicado.resolve(self, a)
+
+    def delete_assets(self, assets: list[Asset]):
+        """Exclui itens da biblioteca (só administrador). Vão para _DESCARTADOS; tags e coleções saem junto
+        e voltam se a exclusão for desfeita pelo histórico."""
+        assets = [x for x in assets if x.members]
+        if not assets or not (self.is_admin() or self.shared.lib is None):
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("Excluir da biblioteca")
+        box.setIcon(QMessageBox.Warning)
+        if len(assets) == 1 and assets[0].preview:
+            pm = QPixmap(assets[0].preview)
+            if not pm.isNull():
+                box.setIconPixmap(pm.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        nomes = ", ".join(x.name for x in assets[:6]) + (f" e mais {len(assets) - 6}" if len(assets) > 6 else "")
+        mins = self.backup_minutes()
+        prazo = ({60: "1 hora", 1440: "1 dia", 10080: "7 dias"}.get(mins, f"{mins} minutos")
+                 if mins > 0 else "")
+        box.setText(f"Tem certeza que quer excluir {nomes}?")
+        box.setInformativeText(
+            "O item some da biblioteca, das tags e das coleções para todos da equipe.\n\n"
+            "Os arquivos vão para _BACKUP_COMPACTADOS\\_DESCARTADOS"
+            + (f" e são apagados de vez depois de {prazo}." if prazo else ".")
+            + " Até lá, dá para desfazer pelo Histórico.")
+        yes = box.addButton("Excluir", QMessageBox.DestructiveRole)
+        box.addButton("Cancelar", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is not yes:
+            return
+        root = self.cfg["library_root"]
+        locked, busy = self.try_lock([x.key for x in assets], "excluindo")
+        errors, tops = [], set()
+        try:
+            for x in assets:
+                if x.key not in locked:
+                    continue
+                rec = []
+                try:
+                    intake.discard(x, root, rec)
+                except OSError as e:
+                    errors.append(f"{x.name}: {e}")
+                    for src, dst in reversed(rec):          # devolve o que já tinha saído
+                        try:
+                            shutil.move(dst, src)
+                        except OSError:
+                            pass
+                    continue
+                tomb = "#excluido/" + x.key            # tags e coleções ficam guardadas aqui até o desfazer
+                self.db.move_item_data(x.key, tomb)
+                self.log_op("excluir", x.category, x.key, f"{x.name} excluído", rec, extra={"keys": [[x.key, tomb]]})
+                tops.add(x.category.split("/")[0])
+        finally:
+            for k in locked:
+                self.shared.release(k)
+        for t in tops:
+            self.refresh_category(t)
+        msgs = busy + errors
+        if msgs:
+            QMessageBox.information(self, "Excluir", "Alguns itens não foram excluídos:\n\n" + "\n".join(msgs))
 
     def _category_menu(self, pos):
         it = self.cat_tree.itemAt(pos)

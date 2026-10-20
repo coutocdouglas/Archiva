@@ -21,6 +21,10 @@ OP_NAMES = {
     "mover": "Moveu",
     "renomear": "Renomeou",
     "juntar": "Juntou pastas:",
+    "absorver": "Absorveu categoria:",
+    "comparar": "Pasta × compactado:",
+    "separar": "Separou o compactado repetido:",
+    "excluir": "Excluiu",
     "desfazer": "Desfez:",
 }
 

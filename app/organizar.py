@@ -205,10 +205,10 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
             if r.left_behind:
                 errors.append(f"{a.name}: imagens extras ficaram na pasta de origem")
         if merge_source is not None:
-            _remove_if_empty(merge_source.path)
+            _remove_empty_tree(merge_source.path)
             if merge_pairs:
                 dest = todo[0].dest
-                w.log_op("juntar", dest.key, dest.key,
+                w.log_op(op if op in ("juntar", "absorver") else "juntar", dest.key, dest.key,
                          f"{pretty(merge_source.key)} → {pretty(dest.key)} ({len(merge_keys)} itens)",
                          merge_pairs, extra={"keys": merge_keys})
     finally:
@@ -221,6 +221,15 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
         w._on_verify_removed(merge_source.key)      # categoria de cima que ficou vazia sai da lista
     w.entrada.fill_categories()
     return moved, discarded, errors
+
+
+def _remove_empty_tree(path: str) -> None:
+    """Apaga as subpastas que ficaram vazias (de baixo para cima) e depois a pasta. Pasta com qualquer arquivo
+    que sobrou (ex.: uma subpasta oculta por alguém em 'Pastas exibidas') fica."""
+    for r, _d, _f in sorted(os.walk(path), key=lambda t: -len(t[0])):
+        if r != path:
+            _remove_if_empty(r)
+    _remove_if_empty(path)
 
 
 def _remove_if_empty(path: str) -> None:
@@ -510,13 +519,18 @@ class FolderCard(ui.Glass):
             self.info.setText("Escolha uma pasta acima.")
             return
         self.name.setText(pretty(cat.key))
-        items = cat.assets
+        absorb = not self.principal and bool(cat.children)
+        items = cat.all_assets() if absorb else cat.assets
         parsed = [a.name for a in items]
         pat = intake.name_pattern(cat)[0] if items else None
         rng = f"{parsed[0]}  …  {parsed[-1]}" if len(parsed) > 1 else (parsed[0] if parsed else "")
         self.info.setText(f"{len(items)} itens" + (f"  ·  nome dos itens: {pat} NN" if pat else "")
                           + (f"\n{rng}" if rng else "")
-                          + ("\nTem subpastas: escolha uma delas." if cat.children and not cat.assets else ""))
+                          + (f"\nInclui {len(cat.children)} subpasta(s): "
+                             + ", ".join(pretty(c.key.split('/')[-1]) for c in cat.children[:5])
+                             + (" …" if len(cat.children) > 5 else "") + " — todas vão juntas." if absorb else "")
+                          + ("\nTem subpastas: escolha uma delas." if self.principal and cat.children and not cat.assets
+                             else ""))
         for a in items[-6:]:
             t = Thumb(a.preview, 64, 10)
             t.setToolTip(a.name)
@@ -759,11 +773,9 @@ class OrganizacaoPage(QWidget):
             return "Escolha pastas diferentes."
         if src.key.startswith(dst.key + "/") or dst.key.startswith(src.key + "/"):
             return "Uma pasta está dentro da outra; escolha pastas separadas."
-        if src.children:
-            return f"{pretty(src.key)} tem subpastas: junte uma subpasta de cada vez."
         if dst.children and not dst.assets:
             return f"{pretty(dst.key)} só tem subpastas: escolha uma delas como principal."
-        if not [a for a in src.assets if a.kind != "missing"]:
+        if not [a for a in src.all_assets() if a.kind != "missing"]:
             return f"{pretty(src.key)} não tem itens para mover."
         return ""
 
@@ -783,7 +795,7 @@ class OrganizacaoPage(QWidget):
             self.merge_info.setText(prob)
             self.prev_lay.addStretch(1)
             return
-        changes = [Change(x, dst, f"vem de {pretty(src.key)}") for x in src.assets if x.kind != "missing"]
+        changes = self._merge_changes(src, dst)
         plan_names(changes, self.w.categories, self.w.db)
         for ch in changes[:8]:
             g = ui.Glass(12)
@@ -802,18 +814,26 @@ class OrganizacaoPage(QWidget):
         if len(changes) > 8:
             self.prev_lay.addWidget(_small(f"e mais {len(changes) - 8} itens…", theme.MUTED, 9.5, 0))
         self.prev_lay.addStretch(1)
-        self.merge_info.setText(f"{len(changes)} itens de {pretty(src.key)} vão para {pretty(dst.key)}. "
-                                + ("A pasta de origem será apagada se ficar vazia."))
+        sub = f" (com {len(src.children)} subpasta(s))" if src.children else ""
+        self.merge_info.setText(f"{len(changes)} itens de {pretty(src.key)}{sub} vão para {pretty(dst.key)}. "
+                                + ("A pasta de origem e as subpastas são apagadas se ficarem vazias."))
+
+    @staticmethod
+    def _merge_changes(src, dst) -> list[Change]:
+        """Todos os itens da pasta que sai, inclusive das subpastas (em ordem: a própria pasta, depois cada subpasta)."""
+        return [Change(x, dst, f"vem de {pretty(x.category)}") for x in src.all_assets() if x.kind != "missing"]
 
     def start_merge(self):
         src, dst = self._merge_pair()
         if self._merge_problem(src, dst):
             return
-        changes = [Change(x, dst, f"vem de {pretty(src.key)}") for x in src.assets if x.kind != "missing"]
-        if self.review(changes, f"Juntar {pretty(src.key)} em {pretty(dst.key)}",
-                       f"Os {len(changes)} itens de {pretty(src.key)} vão para {pretty(dst.key)} com os próximos "
-                       "números livres. Itens parecidos com algo que já existe vêm marcados como \"Pular\".",
-                       "juntar", merge_source=src):
+        changes = self._merge_changes(src, dst)
+        sub = (f" e das {len(src.children)} subpasta(s) dela" if src.children else "")
+        if self.review(changes, f"{'Absorver' if src.children else 'Juntar'} {pretty(src.key)} em {pretty(dst.key)}",
+                       f"Os {len(changes)} itens de {pretty(src.key)}{sub} vão para {pretty(dst.key)} com o nome "
+                       "de lá e os próximos números livres. Itens parecidos com algo que já existe vêm marcados "
+                       "como \"Pular\". Dá para desfazer tudo de uma vez pelo histórico.",
+                       "absorver" if src.children else "juntar", merge_source=src):
             self.refresh()
 
     # ------------------------------------------------------------------ "Mover para…" da Biblioteca

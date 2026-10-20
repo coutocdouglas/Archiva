@@ -265,6 +265,7 @@ class TagDB:
     def all_tags(self) -> list[tuple[str, int]]:
         rows = self.conn.execute(
             "SELECT t.name, COUNT(it.item_key) FROM tags t LEFT JOIN item_tags it ON it.tag_id = t.id "
+            "AND it.item_key NOT LIKE '#%' "
             "GROUP BY t.id HAVING COUNT(it.item_key) > 0 ORDER BY t.name"
         ).fetchall()
         return [(r[0], r[1]) for r in rows]
@@ -443,7 +444,8 @@ class TagDB:
     # coleções de projeto (compartilhadas com a equipe) --------------------------
     def collections(self, archived: bool | None = False) -> list[dict]:
         sql = ("SELECT c.id, c.name, c.note, c.created_by, c.created_at, c.updated_at, c.archived, "
-               "COUNT(ci.item_key) FROM collections c LEFT JOIN collection_items ci ON ci.cid = c.id ")
+               "COUNT(ci.item_key) FROM collections c LEFT JOIN collection_items ci ON ci.cid = c.id "
+               "AND ci.item_key NOT LIKE '#%' ")
         args = ()
         if archived is not None:
             sql += "WHERE c.archived = ? "

@@ -128,6 +128,8 @@ class Asset:
     members: list[str] = field(default_factory=list)         # todos os arquivos/pastas do grupo (usado na Entrada)
     search_text: str = ""
     added_time: float = 0.0     # data da prévia/pasta (lida junto com a listagem; usada no Início)
+    dup_archive: str | None = None       # compactado com o mesmo nome de uma pasta já extraída (botão Comparar)
+    dup_archive_type: str | None = None
 
     @property
     def kind(self) -> str:
@@ -297,6 +299,7 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
                             break
                 a.preview = stem_img or first_image_in(folder)
             if g["archives"]:
+                a.dup_archive, a.dup_archive_type = g["archives"][0]
                 a.issues.append("Existe pasta e arquivo compactado com o mesmo nome (usando a pasta)")
         elif g["archives"]:
             a.archive, a.archive_type = g["archives"][0]

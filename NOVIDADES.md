@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.0.2
+- **Comparar pasta e compactado:** quando um item existe como pasta e como compactado com o mesmo nome, o botão "Comparar pasta e compactado…" (no painel e no botão direito) mostra os arquivos iguais, os diferentes e os que só existem de um lado, sem extrair nada. Você escolhe: manter a pasta, manter o compactado ou ficar com os dois (o compactado vira um item novo com o próximo número). O que sai vai para _DESCARTADOS e dá para desfazer.
+- **Excluir item (administrador):** botão direito › "Excluir item…", sempre com confirmação. O item some da biblioteca, das tags e das coleções. Os arquivos vão para _DESCARTADOS e, até o prazo do backup, o Histórico desfaz tudo, inclusive as tags e coleções.
+- **Absorver categoria inteira:** em Organização › Juntar pastas, a pasta que sai agora pode ter subpastas (ex.: PAVIMENTOS com MADEIRA e PEDRA). Todos os itens vão para a pasta principal com o nome dela e os próximos números, as subpastas vazias são apagadas e o desfazer devolve tudo de uma vez.
+
 ## 1.0.1
 - **Trava mostra quem está com o item:** quando alguém da rede está mexendo num item ou categoria, o aviso diz o nome, o computador e desde que horas (ex.: "Maria (PC-02) está extraindo desde 13:40"). A trava continua impedindo a ação. Vale também para "Mover para…", que agora trava cada item movido.
 - **Campo de tags sempre vazio:** depois de aplicar uma tag, o campo não traz mais a última tag escrita ao passar para outro item.

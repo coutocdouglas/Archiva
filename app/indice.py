@@ -15,7 +15,7 @@ from PySide6.QtCore import QThread, Signal
 
 from .scanner import Category, list_categories, scan_category
 
-VERSION = 3
+VERSION = 4  # 4: Asset.dup_archive
 
 
 def cache_file(cache_dir: Path, root: str) -> Path:
