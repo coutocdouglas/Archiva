@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.1.6
+- **Buscar a prévia na web:** botão direito no cartão › Atualizar prévia › Buscar na web… O Archiva copia a prévia atual e abre o Google Lens no navegador: é só apertar Ctrl+V, escolher o resultado de melhor qualidade e salvar a imagem em Downloads. O Archiva percebe a imagem nova sozinho e abre a mesma conferência (atual × nova, com a resolução), com troca, _DESCARTADOS e desfazer como no "Buscar no PC".
+- Se a imagem foi salva em outra pasta, use "Escolher arquivo…" na janela de espera.
+
 ## 1.1.5
 - **Atualizar a prévia pelo Archiva:** botão direito no cartão › Atualizar prévia › Buscar no PC… Escolha a imagem (jpg, png, webp…) e confira a prévia atual ao lado da nova, com a resolução de cada uma, antes de trocar. Imagens em outro formato são convertidas para o formato da prévia.
 - A prévia antiga vai para _DESCARTADOS e dá para desfazer pelo Histórico. As miniaturas das Variações que eram cópia da prévia são trocadas junto; miniaturas próprias de uma variação (ex.: um render do WIRE) ficam como estão.

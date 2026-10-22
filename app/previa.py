@@ -220,13 +220,27 @@ def apply(root: str, a: Asset, new_src: str) -> list[tuple[str, str]]:
     return moves
 
 
+def _current(w, a: Asset) -> Asset | None:
+    """O item como está agora (a categoria pode ter sido relida enquanto a pessoa procurava a imagem)."""
+    return next((x for x in getattr(w, "all_assets", []) if x.key == a.key), a)
+
+
 def update_from_pc(w, a: Asset) -> None:
-    """Fluxo completo: escolher a imagem, conferir, trocar com trava e histórico, atualizar a tela."""
-    start = w.cfg.values.get("previa_last_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
+    """Escolher a imagem no computador e trocar a prévia."""
+    start = w.cfg.values.get("previa_last_dir") or downloads_dir()
     path, _ = QFileDialog.getOpenFileName(w, f"Nova prévia para {a.name}", start, IMG_FILTER)
     if not path:
         return
     w.cfg.values["previa_last_dir"] = os.path.dirname(path)
+    update_with(w, a, path)
+
+
+def update_with(w, a: Asset, path: str) -> None:
+    """Fluxo comum: conferir, trocar com trava e histórico, atualizar a tela."""
+    a = _current(w, a)
+    if a is None:
+        QMessageBox.warning(w, "Atualizar prévia", "O item não está mais na biblioteca.")
+        return
     if not image_size(path).isValid():
         QMessageBox.warning(w, "Atualizar prévia", "Não consegui abrir essa imagem.")
         return
@@ -254,3 +268,134 @@ def update_from_pc(w, a: Asset) -> None:
         w.forget_image(p)
     w.refresh_category(a.category.split("/")[0])
     w.statusBar().showMessage(f"{a.name}: prévia atualizada.", 6000)
+
+
+# ------------------------------------------------------------------ buscar na web (assistido)
+LENS_URL = "https://www.google.com/?olud"   # abre direto a caixa "pesquisar com o Google Lens"
+TEMP_EXT = (".crdownload", ".part", ".tmp", ".download", ".partial")
+WEB_EXT = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".avif")
+
+
+def downloads_dir() -> str:
+    from PySide6.QtCore import QStandardPaths
+    d = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
+    return d or os.path.join(os.path.expanduser("~"), "Downloads")
+
+
+def _snapshot(folder: str) -> dict[str, float]:
+    out = {}
+    try:
+        for e in os.scandir(folder):
+            if e.is_file():
+                out[e.path] = e.stat().st_mtime
+    except OSError:
+        pass
+    return out
+
+
+class WebWaiter(QDialog):
+    """Fica aberta enquanto a pessoa procura no Google Lens; quando uma imagem nova aparece em Downloads,
+    fecha e abre a conferência com ela."""
+
+    def __init__(self, w, a: Asset):
+        super().__init__(w)
+        from PySide6.QtCore import QTimer
+        self.w, self.a = w, a
+        self.folder = downloads_dir()
+        self.before = _snapshot(self.folder)
+        self.sizes: dict[str, int] = {}
+        self.found: str | None = None
+        self.setWindowTitle(f"Buscar prévia na web · {a.name}")
+        self.setModal(False)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        self.resize(520, 330)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(12)
+        lay.addWidget(ui.heading("Buscar prévia na web", 14))
+        steps = QLabel(
+            "<ol style='margin-left:-20px; line-height:150%'>"
+            "<li>No Google que abriu no navegador, aperte <b>Ctrl+V</b> na caixa do Google Lens (a prévia já "
+            "está copiada). Se a caixa não aparecer, clique no ícone da câmera na busca e aperte Ctrl+V.</li>"
+            "<li>Escolha o resultado de melhor qualidade e abra a imagem no tamanho original.</li>"
+            "<li>Botão direito na imagem › <b>Salvar imagem como…</b> na pasta Downloads.</li>"
+            "</ol>")
+        steps.setWordWrap(True)
+        lay.addWidget(steps)
+        self.status = QLabel(f"Esperando uma imagem nova em <b>{self.folder}</b>…")
+        self.status.setWordWrap(True)
+        self.status.setStyleSheet(f"color:{theme.MUTED.name()};")
+        lay.addWidget(self.status)
+        lay.addStretch(1)
+        b = QHBoxLayout()
+        cancel = QPushButton("Cancelar")
+        cancel.clicked.connect(self.reject)
+        b.addWidget(cancel)
+        b.addStretch(1)
+        again = QPushButton("Abrir o Lens de novo")
+        again.clicked.connect(self.open_lens)
+        b.addWidget(again)
+        pick = QPushButton("Escolher arquivo…")
+        pick.setToolTip("Se a imagem foi salva em outra pasta")
+        pick.clicked.connect(self._pick)
+        b.addWidget(pick)
+        lay.addLayout(b)
+        self.timer = QTimer(self, interval=1000)
+        self.timer.timeout.connect(self._poll)
+        self.timer.start()
+        self.finished.connect(lambda _r: self.timer.stop())
+
+    def open_lens(self):
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtWidgets import QApplication
+        if self.a.preview:
+            r = QImageReader(self.a.preview)
+            r.setAutoTransform(True)
+            img = r.read()
+            if not img.isNull():
+                QApplication.clipboard().setImage(img)
+        QDesktopServices.openUrl(QUrl(LENS_URL))
+
+    def _poll(self):
+        cands = []
+        for path, mt in _snapshot(self.folder).items():
+            low = path.lower()
+            if low.endswith(TEMP_EXT) or not low.endswith(WEB_EXT):
+                continue
+            if self.before.get(path) == mt:
+                continue                      # já estava lá antes
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                continue
+            if size == 0 or self.sizes.get(path) != size:   # ainda baixando: espera o tamanho parar
+                self.sizes[path] = size
+                continue
+            cands.append((mt, path))
+        for _mt, path in sorted(cands, reverse=True):
+            if image_size(path).isValid():
+                self.found = path
+                self.accept()
+                return
+
+    def _pick(self):
+        path, _ = QFileDialog.getOpenFileName(self, f"Nova prévia para {self.a.name}", self.folder, IMG_FILTER)
+        if path:
+            self.found = path
+            self.accept()
+
+
+def update_from_web(w, a: Asset) -> None:
+    """Copia a prévia, abre o Google Lens e espera a imagem escolhida aparecer em Downloads."""
+    if getattr(w, "_web_waiter", None) is not None:
+        w._web_waiter.close()
+    dlg = WebWaiter(w, a)
+    w._web_waiter = dlg
+
+    def done(result):
+        w._web_waiter = None
+        if result == QDialog.Accepted and dlg.found:
+            update_with(w, a, dlg.found)
+    dlg.finished.connect(done)
+    dlg.show()
+    dlg.open_lens()

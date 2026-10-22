@@ -2338,6 +2338,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             pv = m.addMenu("Atualizar prévia")
             from . import previa
             pv.addAction("Buscar no PC…", lambda: previa.update_from_pc(self, a))
+            pv.addAction("Buscar na web…", lambda: previa.update_from_web(self, a))
         if len(sel) == 1 and a.folder and a.dup_archive:
             m.addAction("Comparar pasta e compactado…", lambda: self.compare_duplicate(a))
         if self.is_admin() or self.shared.lib is None:
