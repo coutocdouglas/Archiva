@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.0
+- **Buscar a prévia na web automaticamente:** botão direito no cartão › Atualizar prévia › Buscar na web… O Archiva procura imagens iguais e parecidas no Google, baixa as candidatas em segundo plano, mede a resolução de cada uma e mostra as **3 maiores**, com o tamanho em pixels. Clique em "Usar esta" e siga para a conferência de sempre (atual × nova, _DESCARTADOS e desfazer). Imagens repetidas, quebradas ou menores que 300 px ficam de fora.
+- Usa a Google Cloud Vision: o administrador cola a chave da API uma vez em Configurações › Biblioteca › "Busca de prévias na web" e ela vale para toda a equipe. As primeiras 1.000 buscas de cada mês são grátis.
+- Sem chave, ou se nada servir, o botão "Abrir no Google Lens" continua disponível (o jeito da 1.1.6).
+
 ## 1.1.6
 - **Buscar a prévia na web:** botão direito no cartão › Atualizar prévia › Buscar na web… O Archiva copia a prévia atual e abre o Google Lens no navegador: é só apertar Ctrl+V, escolher o resultado de melhor qualidade e salvar a imagem em Downloads. O Archiva percebe a imagem nova sozinho e abre a mesma conferência (atual × nova, com a resolução), com troca, _DESCARTADOS e desfazer como no "Buscar no PC".
 - Se a imagem foi salva em outra pasta, use "Escolher arquivo…" na janela de espera.

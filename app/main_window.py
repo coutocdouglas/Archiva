@@ -756,6 +756,16 @@ class SettingsDialog(QDialog):
             form.addRow("", note)
         form.addRow("", QLabel(f"<span style='color:{theme.FAINT.name()}'>Backup atual: {n} arquivo(s), "
                                f"{size / 1024 ** 3:.2f} GB em {extractor.BACKUP_DIR}</span>"))
+        from . import busca_web
+        self.vision = QLineEdit(busca_web.get_key(window))
+        self.vision.setEchoMode(QLineEdit.Password)
+        self.vision.setPlaceholderText("chave da API (AIza…)")
+        self.vision.setToolTip("Chave da Google Cloud Vision para 'Atualizar prévia › Buscar na web'. "
+                               "Vale para toda a equipe desta biblioteca.")
+        if lib is not None and not lib.is_admin():
+            self.vision.setEnabled(False)
+            self.vision.setToolTip("Definida pelo administrador; vale para todos que usam esta biblioteca")
+        form.addRow("Busca de prévias na web", self.vision)
         self.unwanted = QLineEdit(", ".join(window.cfg["unwanted_ext"]))
         self.unwanted.setToolTip("Depois de extrair, o programa pergunta se quer apagar arquivos com estas extensões")
         form.addRow("Perguntar se apaga", self.unwanted)
@@ -2338,7 +2348,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             pv = m.addMenu("Atualizar prévia")
             from . import previa
             pv.addAction("Buscar no PC…", lambda: previa.update_from_pc(self, a))
-            pv.addAction("Buscar na web…", lambda: previa.update_from_web(self, a))
+            from . import busca_web
+            pv.addAction("Buscar na web…", lambda: busca_web.search(self, a))
         if len(sel) == 1 and a.folder and a.dup_archive:
             m.addAction("Comparar pasta e compactado…", lambda: self.compare_duplicate(a))
         if self.is_admin() or self.shared.lib is None:
@@ -2478,6 +2489,15 @@ class MainWindow(FramelessMixin, QMainWindow):
             except OSError:
                 pass
         self.cfg.values["thumb_size"] = self.thumb_size
+        key = d.vision.text().strip()
+        if self.shared.lib is not None:
+            if self.shared.lib.is_admin():
+                try:
+                    self.shared.lib.set_option("vision_key", key)
+                except OSError:
+                    pass
+        else:
+            self.cfg.values["vision_key"] = key
         self.cfg.values["titlebar"] = d.titlebar.currentData()
         self.cfg.values["tutorial_off"] = not d.intro.isChecked()
         self.cfg.values["abertura_off"] = not d.abertura.isChecked()
