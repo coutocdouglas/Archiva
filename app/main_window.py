@@ -2006,12 +2006,27 @@ class MainWindow(FramelessMixin, QMainWindow):
             ReviewDialog(self, ok, fail).exec()
         self.statusBar().showMessage(f"Extração concluída: {len(ok)} ok" + (f", {len(fail)} com erro" if fail else ""), 8000)
 
+    def forget_image(self, path: str | None):
+        """Esquece a imagem guardada na memória (miniatura e banner) para ela ser lida de novo."""
+        if not path:
+            return
+        self.thumbs.reload([path])
+        if hasattr(self, "home"):
+            self.home.banner_images.mem.pop(path, None)
+
     def refresh_category(self, top_key: str):
         """Relê só uma categoria (depois de extrair) e atualiza a tela."""
         self.__dict__.pop("_maps_count", None)
         old = next((c for c in self._all_cats if c.key == top_key), None)
         if not old:
             return
+        # prévias podem ter sido trocadas (aqui, por outra pessoa ou por um desfazer): relê as imagens dela
+        pre = os.path.normcase(os.path.join(old.path, ""))
+        self.thumbs.reload([k for k in list(self.thumbs.mem) if os.path.normcase(k).startswith(pre)])
+        if hasattr(self, "home"):
+            bm = self.home.banner_images.mem
+            for k in [k for k in bm if os.path.normcase(k).startswith(pre)]:
+                bm.pop(k, None)
         new = scan_category(old.path, old.key, old.name)
         if hasattr(self, "_sigs"):
             self._sigs[new.key] = indice.signature(new, new.path)
@@ -2319,6 +2334,10 @@ class MainWindow(FramelessMixin, QMainWindow):
         from .organizar import fill_category_menu
         mv = m.addMenu("Mover para…")
         fill_category_menu(mv, self.categories, lambda c: self.organizacao.move_assets(sel, c))
+        if len(sel) == 1:
+            pv = m.addMenu("Atualizar prévia")
+            from . import previa
+            pv.addAction("Buscar no PC…", lambda: previa.update_from_pc(self, a))
         if len(sel) == 1 and a.folder and a.dup_archive:
             m.addAction("Comparar pasta e compactado…", lambda: self.compare_duplicate(a))
         if self.is_admin() or self.shared.lib is None:

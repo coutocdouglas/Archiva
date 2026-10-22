@@ -25,6 +25,7 @@ OP_NAMES = {
     "comparar": "Pasta × compactado:",
     "separar": "Separou o compactado repetido:",
     "excluir": "Excluiu",
+    "previa": "Trocou a",
     "desfazer": "Desfez:",
 }
 
@@ -211,11 +212,19 @@ class Compartilhado(QObject):
         if ev.get("u") != self.lib.uid and not self.lib.is_admin():
             return False, "só quem fez ou o administrador"
         root = self.lib.library_root
-        for a, b in ev.get("moves", []):
-            if not os.path.exists(absolute(root, b)):
+        state: dict[str, bool] = {}     # simula o desfazer passo a passo (um mesmo caminho pode aparecer duas vezes)
+
+        def there(p):
+            k = os.path.normcase(p)
+            return state[k] if k in state else os.path.exists(p)
+        for a, b in reversed(ev.get("moves", [])):
+            pa, pb = absolute(root, a), absolute(root, b)
+            if not there(pb):
                 return False, "os arquivos já foram mexidos depois (ou o backup já foi apagado)"
-            if os.path.exists(absolute(root, a)):
+            if there(pa):
                 return False, f"já existe '{os.path.basename(a)}' no lugar original"
+            state[os.path.normcase(pb)] = False
+            state[os.path.normcase(pa)] = True
         if not ev.get("moves") and not ev.get("created"):
             return False, "nada a desfazer"
         return True, ""

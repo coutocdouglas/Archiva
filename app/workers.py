@@ -90,6 +90,13 @@ class ThumbnailCache(QObject):
             self.pool.start(_ThumbJob(path, self.cache_dir, self.signals))
         return None
 
+    def reload(self, paths) -> None:
+        """Lê de novo estas imagens; enquanto isso, continua mostrando a que já estava na memória."""
+        for path in paths:
+            if path in self.mem and path not in self.pending:
+                self.pending.add(path)
+                self.pool.start(_ThumbJob(path, self.cache_dir, self.signals))
+
     def cancel_pending(self):
         self.pool.clear()
         self.pending.clear()

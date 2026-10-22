@@ -448,7 +448,12 @@ def clean_backup(library_root: str, max_age_minutes: int) -> int:
         return 0
     limit = time.time() - max_age_minutes * 60
     n = 0
+    # _DESCARTADOS tem o próprio relógio (data no nome de cada pasta, ver intake.clean_discarded): pela data dos
+    # arquivos, um descarte recém-feito (arquivo antigo movido, que guarda a data original) sumiria na hora
+    disc = os.path.normcase(os.path.join(root, "_DESCARTADOS"))
     for dirpath, _, files in os.walk(root, topdown=False):
+        if os.path.normcase(dirpath) == disc or os.path.normcase(dirpath).startswith(disc + os.sep):
+            continue
         for f in files:
             p = os.path.join(dirpath, f)
             try:

@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.1.5
+- **Atualizar a prévia pelo Archiva:** botão direito no cartão › Atualizar prévia › Buscar no PC… Escolha a imagem (jpg, png, webp…) e confira a prévia atual ao lado da nova, com a resolução de cada uma, antes de trocar. Imagens em outro formato são convertidas para o formato da prévia.
+- A prévia antiga vai para _DESCARTADOS e dá para desfazer pelo Histórico. As miniaturas das Variações que eram cópia da prévia são trocadas junto; miniaturas próprias de uma variação (ex.: um render do WIRE) ficam como estão.
+- O item fica travado durante a troca, e quem estiver na rede vê a prévia nova sozinho.
+- **_DESCARTADOS não acumula:** tudo o que vai para lá é apagado depois do prazo do backup (Configurações › Biblioteca). Corrigido: descartes de arquivos antigos podiam ser apagados logo na limpeza seguinte, antes do prazo, o que impedia o desfazer.
+
 ## 1.1.4
 - **Texturas automáticas no Merge, sem fazer nada:** ao abrir, o Archiva instala o relink como pacote oficial do 3ds Max (vale para todas as versões do Max no computador, inclusive as que forem instaladas depois) e também na pasta de inicialização de cada Max. Feche e abra o Max uma vez; depois disso, ao arrastar um item e escolher Merge, as texturas vêm da pasta do item. Não há mais nada para arrastar nem configurar.
 - O script ficou mais resistente: procura o aviso do item arrastado em mais de um lugar e, se algo der errado, escreve o motivo no Listener (F11) em vez de parar em silêncio.
