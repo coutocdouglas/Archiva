@@ -26,7 +26,6 @@ from .compartilhado import OP_NAMES, Compartilhado
 from . import indice
 from . import tutoriais
 from .database import TagDB, clean_tag
-from .maxscript import write_merge_script
 from . import scanner as scanner_mod
 from .scanner import Asset, Category, normalize, scan_category
 from . import theme, ui
@@ -395,38 +394,6 @@ class ImageViewer(QDialog):
             super().keyPressEvent(e)
 
 
-class MaxInstallButton(QPushButton):
-    """Botão que se ARRASTA para a viewport do 3ds Max: leva o instalador do relink de texturas."""
-
-    def __init__(self, window):
-        super().__init__("⇲  Arraste para o 3ds Max: instalar relink de texturas")
-        self.w = window
-        self._press = None
-        self.setCursor(Qt.OpenHandCursor)
-        self.setToolTip("Arraste este botão para a viewport do 3ds Max (não precisa clicar).")
-
-    def mousePressEvent(self, e):
-        self._press = e.position().toPoint()
-        super().mousePressEvent(e)
-
-    def mouseMoveEvent(self, e):
-        if self._press is None or (e.position().toPoint() - self._press).manhattanLength() < 8:
-            return super().mouseMoveEvent(e)
-        self._press = None
-        from . import max_startup
-        path = max_startup.write_installer(self.w.cache_root)
-        mime = QMimeData()
-        mime.setUrls([QUrl.fromLocalFile(path)])
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-        drag.exec(Qt.CopyAction)
-        self.setDown(False)
-
-    def mouseReleaseEvent(self, e):
-        self._press = None
-        super().mouseReleaseEvent(e)
-
-
 def variation_order(files: list[str]) -> list[str]:
     """Ordena as variações juntando cada 'X WIRE' logo depois de 'X' (CHAIR, CHAIR WIRE, OTTOMAN, …)."""
     import re as _re
@@ -792,9 +759,6 @@ class SettingsDialog(QDialog):
         self.unwanted = QLineEdit(", ".join(window.cfg["unwanted_ext"]))
         self.unwanted.setToolTip("Depois de extrair, o programa pergunta se quer apagar arquivos com estas extensões")
         form.addRow("Perguntar se apaga", self.unwanted)
-        self.expand = QLineEdit(", ".join(window.cfg["expand_subfolders"]))
-        self.expand.setToolTip("Na Entrada, estas categorias mostram as subpastas (ex.: tipos de luminária)")
-        form.addRow("Subpastas na Entrada", self.expand)
         self.pwd_label = QLabel()
         pwd_btn = QPushButton("Ver / editar senhas…")
         pwd_btn.clicked.connect(self._edit_passwords)
@@ -805,21 +769,14 @@ class SettingsDialog(QDialog):
         form.addRow("Extratores", QLabel(f"<span style='color:{theme.MUTED.name()}'>{txt}</span>"))
 
         form = section("Uso")
-        self.drag = QComboBox()
-        self.drag.addItem("Arquivo .max: o Max mostra Merge / XRef e você posiciona com o mouse", "max")
-        self.drag.addItem("Merge direto por script (sem janela; o item entra na posição original)", "script")
-        self.drag.setCurrentIndex(0 if window.cfg["drag_mode"] == "max" else 1)
-        form.addRow("Ao arrastar para o 3ds Max", self.drag)
         vers = getattr(window, "max_versions", [])
-        mx_txt = ("Relink de texturas instalado no 3ds Max " + ", ".join(vers)
-                  + ". Vale no Merge; abra o Max de novo depois de instalar.") if vers else \
-            "3ds Max não encontrado neste computador: o relink automático de texturas não foi instalado."
-        mx_lbl = QLabel(mx_txt + " Se as texturas não vierem no Merge, arraste o botão abaixo para a viewport "
-                        "do 3ds Max uma vez: o próprio Max instala e já ativa o relink.")
+        mx_txt = ("Texturas automáticas no Merge: ativo no 3ds Max " + ", ".join(vers) + ". Ao arrastar um item e "
+                  "escolher Merge, as texturas vêm da pasta do item (resumo no Listener, F11).") if vers else \
+            "3ds Max não encontrado neste computador."
+        mx_lbl = QLabel(mx_txt)
         mx_lbl.setWordWrap(True)
         mx_lbl.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
-        form.addRow("", mx_lbl)
-        form.addRow("", MaxInstallButton(window))
+        form.addRow("3ds Max", mx_lbl)
         self.size = QSlider(Qt.Horizontal)
         self.size.setRange(120, 300)
         self.size.setValue(window.thumb_size)
@@ -1044,9 +1001,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.thumbs = ThumbnailCache(self.cache_root)
         scanner_mod.UNWANTED_EXT = extractor._norm_exts(self.cfg["unwanted_ext"])
         self.passwords: list[str] = self.cfg.values.setdefault("passwords", [])
-        if not self.cfg.values.get("drag_max_1_1_1"):   # 1.1.1: volta o .max puro (o Max posiciona pelo mouse);
-            self.cfg.values["drag_mode"] = "max"          # o relink fica com o script de inicialização do Max
-            self.cfg.values["drag_max_1_1_1"] = True
+        self.cfg.values["drag_mode"] = "max"   # 1.1.4: único modo (.max puro + texturas pelo script do Max)
         from . import max_startup
         self.max_versions = max_startup.install()
         self._pwd_tries: dict[str, int] = {}
@@ -1917,14 +1872,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not mx:
             self.statusBar().showMessage(f"{a.name}: nenhum arquivo .max encontrado dentro.", 6000)
             return None
-        if self.cfg["drag_mode"] != "script":
-            from . import max_startup
-            max_startup.write_handoff(a.name, extractor.map_dirs(a))   # o script do Max religa depois do Merge
-        if self.cfg["drag_mode"] == "script":
-            self.db.record_use(a.key)
-            label = a.name if not max_file else f"{a.name} - {os.path.splitext(os.path.basename(mx))[0]}"
-            key = a.key if not max_file else f"{a.key} - {os.path.splitext(os.path.basename(mx))[0]}"
-            return str(write_merge_script(label, key, mx, extractor.map_dirs(a), self.cache_root))
+        from . import max_startup
+        max_startup.write_handoff(a.name, mx, extractor.map_dirs(a))   # o script do Max religa depois do Merge
         self.db.record_use(a.key)
         return mx
 
@@ -2508,13 +2457,11 @@ class MainWindow(FramelessMixin, QMainWindow):
                 self.shared.lib.set_option("backup_minutes", int(d.retention.currentData()))
             except OSError:
                 pass
-        self.cfg.values["drag_mode"] = d.drag.currentData()
         self.cfg.values["thumb_size"] = self.thumb_size
         self.cfg.values["titlebar"] = d.titlebar.currentData()
         self.cfg.values["tutorial_off"] = not d.intro.isChecked()
         self.cfg.values["abertura_off"] = not d.abertura.isChecked()
         self.cfg.values["check_updates"] = d.check_upd.isChecked()
-        self.cfg.values["expand_subfolders"] = [x.strip() for x in d.expand.text().split(",") if x.strip()]
         self.entrada.fill_categories()
         exts = [e.strip().lower() for e in d.unwanted.text().replace(";", ",").split(",") if e.strip()]
         self.cfg.values["unwanted_ext"] = [e if e.startswith(".") else "." + e for e in exts]

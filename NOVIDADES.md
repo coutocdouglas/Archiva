@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.1.4
+- **Texturas automáticas no Merge, sem fazer nada:** ao abrir, o Archiva instala o relink como pacote oficial do 3ds Max (vale para todas as versões do Max no computador, inclusive as que forem instaladas depois) e também na pasta de inicialização de cada Max. Feche e abra o Max uma vez; depois disso, ao arrastar um item e escolher Merge, as texturas vêm da pasta do item. Não há mais nada para arrastar nem configurar.
+- O script ficou mais resistente: procura o aviso do item arrastado em mais de um lugar e, se algo der errado, escreve o motivo no Listener (F11) em vez de parar em silêncio.
+- **Entrada mostra sempre as subpastas:** categorias com subpastas (ex.: LUMINARIAS › PENDENTE) aparecem sozinhas na lista, em qualquer computador. A opção "Subpastas na Entrada" saiu de Configurações.
+- Saíram de Configurações a escolha do modo de arrastar (agora é sempre o Merge do Max com texturas automáticas) e o botão de instalar o relink.
+
 ## 1.1.3
 - **Instalar o relink de texturas pelo próprio 3ds Max:** em Configurações › Uso há um botão "Arraste para o 3ds Max". Arraste-o uma vez para a viewport: o Max instala o script na pasta de inicialização dele e já o ativa, sem reabrir. Serve para computadores em que o Archiva não achou a pasta de scripts do Max sozinho.
 - Ao abrir o Max, o Listener (F11) mostra "Archiva: relink de texturas ativo", para conferir que está funcionando.

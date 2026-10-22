@@ -326,14 +326,14 @@ class EntradaPage(QWidget):
         self.cat.blockSignals(True)
         self.cat.clear()
         self.cat.addItem("", None)
-        expand = {e.casefold() for e in self.w.cfg["expand_subfolders"]}
+        def add(c, label):
+            # categoria com subpastas: aparece se também tem itens soltos; as subpastas sempre aparecem
+            if c.assets or not c.children:
+                self.cat.addItem(label, c.key)
+            for ch in c.children:
+                add(ch, f"{label} › {ch.name}")
         for top in self.w.categories:
-            if top.name.casefold() in expand and top.children:
-                # ex.: LUMINARIAS -> só as subpastas imediatas (Luminária pendente, de piso…)
-                for ch in top.children:
-                    self.cat.addItem(f"{top.name} › {ch.name}", ch.key)
-            else:
-                self.cat.addItem(top.name, top.key)
+            add(top, top.name)
         comp = QCompleter([self.cat.itemText(i) for i in range(1, self.cat.count())], self)
         comp.setCaseSensitivity(Qt.CaseInsensitive)
         comp.setFilterMode(Qt.MatchContains)
