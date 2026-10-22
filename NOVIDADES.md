@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.1
+- **Possíveis repetidos (Organização, administrador):** o Archiva compara as prévias da biblioteca inteira (um repetido pode estar na pasta errada) e mostra cada par lado a lado, com prévia, categoria, tipo (pasta ou compactado), tamanho, número de arquivos, resolução da prévia e quanto se parecem.
+- Em cada par: **Manter A**, **Manter B** ou **Manter os dois**. O que sai vai para _DESCARTADOS (apagado depois do prazo do backup) e as tags e coleções dele passam para o que fica. Dá para desfazer pelo Histórico. "Manter os dois" marca o par como diferente para a equipe toda e ele não aparece de novo.
+- A procura é automática: roda em segundo plano ao abrir e sempre que entram ou mudam itens. O botão Organização no menu lateral mostra quantos pares estão esperando.
+
 ## 1.2.0
 - **Buscar a prévia na web automaticamente:** botão direito no cartão › Atualizar prévia › Buscar na web… O Archiva procura imagens iguais e parecidas no Google, baixa as candidatas em segundo plano, mede a resolução de cada uma e mostra as **3 maiores**, com o tamanho em pixels. Clique em "Usar esta" e siga para a conferência de sempre (atual × nova, _DESCARTADOS e desfazer). Imagens repetidas, quebradas ou menores que 300 px ficam de fora.
 - Usa a Google Cloud Vision: o administrador cola a chave da API uma vez em Configurações › Biblioteca › "Busca de prévias na web" e ela vale para toda a equipe. As primeiras 1.000 buscas de cada mês são grátis.

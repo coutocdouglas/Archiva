@@ -1199,6 +1199,11 @@ class MainWindow(FramelessMixin, QMainWindow):
         from .organizar import OrganizacaoPage
         self.organizacao = OrganizacaoPage(self)
         self.tabs.add(self.organizacao, "organizacao", "Organização")
+        self.organizacao.repetidos.count_changed.connect(
+            lambda n: hasattr(self, "sidebar") and "organizacao" in self.sidebar.buttons
+            and self.sidebar.buttons["organizacao"].set_badge(n))
+        self._dup_timer = QTimer(self, singleShot=True)
+        self._dup_timer.timeout.connect(self._scan_dups)
         self.aprender = tutoriais.AprenderPage(self)
         self.aprender.open_tutorial.connect(self.show_tutorial)
         self.tabs.add(self.aprender, "aprender", "Aprender")
@@ -1373,6 +1378,10 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.splitter.restoreState(QByteArray.fromBase64(s.encode()))
 
     def closeEvent(self, e):
+        try:
+            self.organizacao.repetidos.stop()
+        except Exception:  # noqa: BLE001
+            pass
         self.cfg.values["window_geometry"] = bytes(self.saveGeometry().toBase64()).decode()
         self.cfg.values["splitter_state"] = bytes(self.splitter.saveState().toBase64()).decode()
         self.cfg.values["thumb_size"] = self.thumb_size
@@ -1642,7 +1651,22 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._all_cats = [c for c in self._all_cats if c.key != key]
         self._replace_category(None)
 
+    def schedule_dups(self, ms: int):
+        """Procura possíveis repetidos em segundo plano (só para quem vê a Organização)."""
+        if hasattr(self, "_dup_timer"):
+            self._dup_timer.start(ms)
+
+    def _scan_dups(self):
+        if not (self.is_admin() or self.shared.lib is None) or not self.all_assets:
+            return
+        if (getattr(self, "_scan", None) and self._scan.isRunning()) or \
+                (getattr(self, "_verify", None) and self._verify.isRunning()):
+            self._dup_timer.start(10000)
+            return
+        self.organizacao.repetidos.scan()
+
     def _on_verify_done(self, n: int):
+        self.schedule_dups(4000)
         self.progress.hide()
         self._save_index()
         self.statusBar().showMessage(self._summary() + (f"  ·  {n} categoria(s) atualizada(s)" if n else ""), 8000)
@@ -1688,6 +1712,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not getattr(self, "_intro_done", False):
             self._intro_done = True
             QTimer.singleShot(500, self._intro)
+        self.schedule_dups(6000)
         self.pronto.emit()
 
     # ----------------------------------------------------------------- tutoriais
@@ -2037,6 +2062,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             bm = self.home.banner_images.mem
             for k in [k for k in bm if os.path.normcase(k).startswith(pre)]:
                 bm.pop(k, None)
+        self.schedule_dups(20000)
         new = scan_category(old.path, old.key, old.name)
         if hasattr(self, "_sigs"):
             self._sigs[new.key] = indice.signature(new, new.path)

@@ -26,6 +26,7 @@ OP_NAMES = {
     "separar": "Separou o compactado repetido:",
     "excluir": "Excluiu",
     "previa": "Trocou a",
+    "repetido": "Tirou o repetido",
     "desfazer": "Desfez:",
 }
 

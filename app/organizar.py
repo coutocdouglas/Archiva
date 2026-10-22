@@ -551,7 +551,8 @@ class OrganizacaoPage(QWidget):
         t.setStyleSheet("font-size:24pt;")
         head.addWidget(t)
         head.addStretch(1)
-        self.seg = ui.Segmented([("Itens fora do lugar", "lugar"), ("Juntar pastas", "juntar")])
+        self.seg = ui.Segmented([("Itens fora do lugar", "lugar"), ("Juntar pastas", "juntar"),
+                                 ("Possíveis repetidos", "repetidos")])
         self.seg.currentIndexChanged.connect(lambda i: (self.stack.setCurrentIndex(i), self._update_merge()))
         head.addWidget(self.seg, 0, Qt.AlignBottom)
         lay.addLayout(head)
@@ -633,6 +634,11 @@ class OrganizacaoPage(QWidget):
         brow.addWidget(self.merge_btn)
         l2.addLayout(brow)
         self.stack.addWidget(p2)
+
+        # ---- possíveis repetidos
+        from .repetidos import RepetidosPanel
+        self.repetidos = RepetidosPanel(self)
+        self.stack.addWidget(self.repetidos)
 
     # ------------------------------------------------------------------ comum
     def refresh(self):
