@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 
@@ -87,6 +88,7 @@ class Biblioteca:
         self._held: dict[str, str] = {}          # chave -> arquivo da trava que eu tenho
         self._users_cache: dict[str, tuple[float, dict]] = {}
         self._lock_cache: dict[str, tuple[float, dict]] = {}     # arquivo -> (criação, conteúdo): não muda
+        self._append_lock = threading.Lock()     # registros podem ser gravados por um ajudante (ex.: Organizar)
 
     # ------------------------------------------------------------------ relógio
     def measure_skew(self) -> float:
@@ -198,15 +200,16 @@ class Biblioteca:
         return n
 
     def append(self, ev: dict) -> dict:
-        self._seq += 1
-        ev = dict(ev)
-        ev.setdefault("t", self.now())
-        ev.update(u=self.uid, s=self._seq, pc=self.profile.get("pc", ""), id=f"{self.uid}.{self._seq}")
-        line = json.dumps(ev, ensure_ascii=False, separators=(",", ":")) + "\n"
-        with open(self.own_file, "a", encoding="utf-8", newline="\n") as f:
-            f.write(line)
-            f.flush()
-        return ev
+        with self._append_lock:
+            self._seq += 1
+            ev = dict(ev)
+            ev.setdefault("t", self.now())
+            ev.update(u=self.uid, s=self._seq, pc=self.profile.get("pc", ""), id=f"{self.uid}.{self._seq}")
+            line = json.dumps(ev, ensure_ascii=False, separators=(",", ":")) + "\n"
+            with open(self.own_file, "a", encoding="utf-8", newline="\n") as f:
+                f.write(line)
+                f.flush()
+            return ev
 
     def event_files(self) -> list[str]:
         folder = os.path.join(self.root, "eventos")

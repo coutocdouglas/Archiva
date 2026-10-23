@@ -1227,6 +1227,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.shared.tags_changed.connect(self._on_shared_tags)
         self.shared.items_changed.connect(self._on_shared_items)
         self.shared.locks_changed.connect(self._on_locks_changed)
+        self.shared.ready.connect(self._on_tags_ready)
         self.entrada.count_changed.connect(lambda n: (self.sidebar.buttons["entrada"].set_badge(n), self._bump()))
         self.tabs.currentChanged.connect(self._on_tab)
         self._update_footer()
@@ -1481,9 +1482,6 @@ class MainWindow(FramelessMixin, QMainWindow):
                     lib.set_option("backup_minutes", int(self.cfg["backup_minutes"]))
                 except OSError:
                     pass
-            if ok and not self.db.prefixes() and self.cfg["prefixes"]:
-                for k, v in dict(self.cfg["prefixes"]).items():   # nomes da Entrada passam a valer para todos
-                    self.db.set_prefix(k, v)
         finally:
             QApplication.restoreOverrideCursor()
         self._bound_root = root
@@ -1491,6 +1489,12 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not ok:
             QMessageBox.warning(self, "Biblioteca", self.shared.error + "\n\nAs tags ficam só neste computador "
                                 "até a pasta poder ser gravada.")
+
+    def _on_tags_ready(self):
+        """Tags da biblioteca montadas (na 1ª vez neste computador, isso termina depois da janela abrir)."""
+        if self.shared.active and not self.db.prefixes() and self.cfg["prefixes"]:
+            for k, v in dict(self.cfg["prefixes"]).items():   # nomes da Entrada passam a valer para todos
+                self.db.set_prefix(k, v)
         if self.shared.offer_old_tags:
             QTimer.singleShot(800, self._offer_old_tags)
 
@@ -2128,17 +2132,24 @@ class MainWindow(FramelessMixin, QMainWindow):
         path, key, name = old.path, old.key, old.name
 
         def work():
+            if not os.path.isdir(path):
+                return None, None
             new = scan_category(path, key, name)
             return new, indice.signature(new, path)
 
         def done(res):
             again = busy.pop(key, False)
+            cur = next((c for c in self._all_cats if c.key == key), None)
+            if cur is None:                       # a categoria saiu da lista enquanto lia (ex.: juntar pastas)
+                return
             if again or self._cat_gen.get(key, 0) != gen:
-                cur = next((c for c in self._all_cats if c.key == key), None)
-                if cur is not None:
-                    self._rescan_category_async(cur)
-                    return
+                self._rescan_category_async(cur)
+                return
             new, sig = res
+            if new is None:                       # a pasta não existe mais
+                self._sigs.pop(key, None) if hasattr(self, "_sigs") else None
+                self._on_verify_removed(key)
+                return
             # prévias podem ter sido trocadas (por outra pessoa ou por um desfazer): relê as imagens da categoria
             pre = os.path.normcase(os.path.join(path, ""))
             self.thumbs.reload([k for k in list(self.thumbs.mem) if os.path.normcase(k).startswith(pre)])

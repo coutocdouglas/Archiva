@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QMessageBox,
                                QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
-from . import perfil, theme, ui
+from . import perfil, segundo_plano, theme, ui
 from .compartilhado import OP_NAMES
 
 MAX_ROWS = 400
@@ -51,13 +51,23 @@ class _Row(QWidget):
         sub.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:8.8pt;")
         col.addWidget(sub)
         lay.addLayout(col, 1)
+        self.btn = None
         if ev.get("k") == "op" and not ev.get("undone"):
-            ok, why = dlg.w.shared.can_undo(ev)
+            # "dá para desfazer?" confere os arquivos no servidor: é calculado num ajudante, de cima para baixo
             b = QPushButton("Desfazer")
-            b.setEnabled(ok)
-            b.setToolTip(why or "Volta os arquivos para onde estavam antes")
+            b.setEnabled(False)
+            b.setToolTip("Conferindo se dá para desfazer…")
             b.clicked.connect(self._undo)
             lay.addWidget(b, 0, Qt.AlignVCenter)
+            self.btn = b
+            dlg._to_check.append(self)
+
+    def set_undo(self, ok: bool, why: str) -> None:
+        try:
+            self.btn.setEnabled(ok)
+            self.btn.setToolTip(why or "Volta os arquivos para onde estavam antes")
+        except RuntimeError:        # a linha já foi trocada (lista recarregada)
+            pass
 
     def _undo(self):
         ev = self.ev
@@ -111,15 +121,23 @@ class HistoryDialog(QDialog):
         self.area.setWidgetResizable(True)
         self.area.setFrameShape(QScrollArea.NoFrame)
         outer.addWidget(self.area, 1)
+        self._to_check: list = []
+        self._gen = 0
+        self.finished.connect(self._stop_checks)
         bb = QDialogButtonBox()
         bb.addButton("Fechar", QDialogButtonBox.RejectRole)
         bb.rejected.connect(self.reject)
         outer.addWidget(bb)
         self.reload()
 
+    def _stop_checks(self, *_):
+        self._gen += 1
+
     def reload(self):
-        self.users = self.w.shared.lib.users() if self.w.shared.lib else {}
-        self.events = self.w.shared.history(self.everyone)
+        shared, everyone = self.w.shared, self.everyone
+        lib = shared.lib
+        self.users, self.events = segundo_plano.wait(
+            self.w, "Lendo o histórico…", lambda: (lib.users() if lib else {}, shared.history(everyone)))
         if self.everyone:
             cur = self.who.currentData()
             self.who.blockSignals(True)
@@ -144,6 +162,8 @@ class HistoryDialog(QDialog):
             e.setStyleSheet(f"color:{theme.FAINT.name()}; padding:30px;")
             e.setAlignment(Qt.AlignCenter)
             lay.addWidget(e)
+        self._gen += 1
+        self._to_check = []
         for ev in evs:
             g = ui.Glass(12)
             gl = QVBoxLayout(g)
@@ -152,6 +172,28 @@ class HistoryDialog(QDialog):
             lay.addWidget(g)
         lay.addStretch(1)
         self.area.setWidget(box)
+        self._check_rows()
+
+    def _check_rows(self):
+        gen, rows, shared = self._gen, list(self._to_check), self.w.shared
+        evs = [r.ev for r in rows]
+
+        def apply(res):
+            i, ok, why = res
+            if self._gen == gen:
+                rows[i].set_undo(ok, why)
+
+        def work():
+            for i, ev in enumerate(evs):
+                if self._gen != gen:          # lista recarregada ou janela fechada
+                    return
+                try:
+                    ok, why = shared.can_undo(ev)
+                except Exception:  # noqa: BLE001
+                    ok, why = False, "não consegui conferir os arquivos"
+                segundo_plano.post(apply, (i, ok, why))
+        if evs:
+            segundo_plano.run_async(work)
 
 
 class PeopleDialog(QDialog):

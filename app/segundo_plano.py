@@ -41,6 +41,12 @@ def init() -> None:
         _bridge = _Bridge()
 
 
+def post(fn, arg=None) -> None:
+    """De dentro de um ajudante: chama fn(arg) na thread da janela."""
+    init()
+    _bridge.call.emit(fn, arg)
+
+
 def run_async(fn, on_done=None, on_error=None):
     """Roda fn() num ajudante. on_done(resultado) / on_error(exceção) voltam na thread da janela."""
     init()

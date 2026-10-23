@@ -314,12 +314,11 @@ def resolve(w, a: Asset) -> None:
     if not (a.folder and a.dup_archive and os.path.exists(a.dup_archive)):
         QMessageBox.information(w, "Comparar", "Não há mais pasta e compactado com o mesmo nome neste item.")
         return
-    from PySide6.QtWidgets import QApplication
-    QApplication.setOverrideCursor(Qt.WaitCursor)
-    try:
-        cmp = compare(list_folder(a.folder), list_archive(a.dup_archive, a.dup_archive_type, w.tools, w.passwords))
-    finally:
-        QApplication.restoreOverrideCursor()
+    from . import segundo_plano
+    tools, pwds = w.tools, list(w.passwords)
+    cmp = segundo_plano.wait(w, f"Lendo a pasta e o compactado de {a.name}…",
+                             lambda: compare(list_folder(a.folder), list_archive(a.dup_archive, a.dup_archive_type,
+                                                                                 tools, pwds)))
     dlg = CompareDialog(w, a, cmp)
     if dlg.exec() != QDialog.Accepted or not dlg.choice:
         return

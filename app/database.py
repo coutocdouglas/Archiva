@@ -79,6 +79,40 @@ CREATE TABLE IF NOT EXISTS collection_items (
 
 SHARED_TABLES = ("item_tags", "tags", "additions", "tag_groups_list", "tag_group_of", "tag_covers", "item_flags",
                  "lib_cfg", "collections", "collection_items")
+# ordem para copiar (tags antes de item_tags, por causa da chave estrangeira)
+COPY_ORDER = ("tags", "item_tags", "additions", "tag_groups_list", "tag_group_of", "tag_covers", "item_flags",
+              "lib_cfg", "collections", "collection_items")
+
+
+class _Batch:
+    """Conexão "em lote": todos os `with self.conn` viram pontos de salvamento dentro de UMA transação.
+
+    Usado na reconstrução: um commit por evento (com espera pelo disco) era quase todo o custo. Um evento
+    inválido desfaz só o próprio ponto de salvamento, como antes desfazia só a própria transação."""
+
+    def __init__(self, conn):
+        self._c = conn
+
+    def __getattr__(self, n):
+        return getattr(self._c, n)
+
+    def execute(self, *a):
+        return self._c.execute(*a)
+
+    def commit(self):
+        pass
+
+    def __enter__(self):
+        self._c.execute("SAVEPOINT ev")
+        return self
+
+    def __exit__(self, et, ev, tb):
+        if et is None:
+            self._c.execute("RELEASE ev")
+        else:
+            self._c.execute("ROLLBACK TO ev")
+            self._c.execute("RELEASE ev")
+        return False
 
 
 def journaled(fn):
@@ -130,6 +164,14 @@ class TagDB:
         self.path = Path(path) if path else None
         self.conn = sqlite3.connect(str(self.path) if path else ":memory:")
         self.conn.execute("PRAGMA foreign_keys = ON")
+        if path:
+            # o banco local é montado a partir dos registros da equipe (dá para refazer): sem esperar o disco a
+            # cada gravação (WAL + NORMAL continua seguro contra corrompimento)
+            try:
+                self.conn.execute("PRAGMA journal_mode = WAL")
+                self.conn.execute("PRAGMA synchronous = NORMAL")
+            except sqlite3.Error:
+                pass
         self.conn.executescript(SCHEMA)
         self.conn.execute("INSERT OR IGNORE INTO meta(k, v) VALUES('schema_version', '1')")
         self.conn.commit()
@@ -179,19 +221,61 @@ class TagDB:
         return n
 
     def rebuild(self, events: list[dict]) -> int:
-        """Monta as tags do zero a partir de todos os registros (em ordem)."""
-        with self.conn:
-            for t in SHARED_TABLES:
-                self.conn.execute(f"DELETE FROM {t}")
-        self._by_item.clear()
-        self._flags.clear()
-        self.conn.execute("PRAGMA synchronous = OFF")
+        """Monta as tags do zero a partir de todos os registros (em ordem), numa transação só."""
+        real = self.conn
+        if real.in_transaction:
+            real.commit()
+        real.execute("BEGIN")
+        self.conn = _Batch(real)
         try:
+            for t in SHARED_TABLES:
+                real.execute(f"DELETE FROM {t}")
+            self._by_item.clear()
+            self._flags.clear()
             n = sum(1 for e in events if self._apply_one(e))
-        finally:
-            self.conn.execute("PRAGMA synchronous = FULL")
+        except BaseException:
+            self.conn = real
+            real.rollback()
+            self.reload()
+            raise
+        self.conn = real
+        real.commit()
         self.reload()
         return n
+
+    @staticmethod
+    def build_file(path: Path, events: list[dict]) -> int:
+        """Monta num arquivo separado (pode rodar num ajudante); depois a janela copia com replace_shared."""
+        tmp = TagDB(path)
+        try:
+            return tmp.rebuild(events)
+        finally:
+            try:
+                tmp.conn.execute("PRAGMA journal_mode = DELETE")    # tudo dentro do arquivo principal
+            except sqlite3.Error:
+                pass
+            tmp.conn.close()
+
+    def replace_shared(self, path: Path) -> None:
+        """Troca as tabelas compartilhadas pelas do banco montado em `path` (rápido: cópia dentro do SQLite)."""
+        real = self.conn
+        if real.in_transaction:
+            real.commit()
+        real.execute("ATTACH DATABASE ? AS novo", (str(path),))
+        try:
+            real.execute("BEGIN")
+            try:
+                for t in reversed(COPY_ORDER):
+                    real.execute(f"DELETE FROM main.{t}")
+                for t in COPY_ORDER:
+                    real.execute(f"INSERT INTO main.{t} SELECT * FROM novo.{t}")
+            except BaseException:
+                real.rollback()
+                raise
+            real.commit()
+        finally:
+            real.execute("DETACH DATABASE novo")
+        self.reload()
 
     # nome dos itens novos por categoria (Entrada) — vale para todos da biblioteca
     def prefixes(self) -> dict[str, str]:
@@ -256,7 +340,19 @@ class TagDB:
             self.conn.execute("UPDATE OR IGNORE tag_covers SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE additions SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE collection_items SET item_key = ? WHERE item_key = ?", (new_key, old_key))
-        self.reload()
+        # memória: mesmo resultado do UPDATE OR IGNORE (o que o novo já tinha fica também no antigo)
+        if old_key != new_key:
+            old_tags = self._by_item.pop(old_key, set())
+            had = self._by_item.get(new_key, set())
+            if old_tags:
+                self._by_item[new_key] = had | old_tags
+                if old_tags & had:
+                    self._by_item[old_key] = old_tags & had
+            old_flags = {f for k, f in self._flags if k == old_key}
+            new_flags = {f for k, f in self._flags if k == new_key}
+            for f in old_flags - new_flags:
+                self._flags.discard((old_key, f))
+                self._flags.add((new_key, f))
 
     # leitura ---------------------------------------------------------------
     def tags_of(self, item_key: str) -> set[str]:
@@ -341,7 +437,8 @@ class TagDB:
             self.conn.execute("DELETE FROM item_tags WHERE tag_id NOT IN (SELECT id FROM tags)")
             self.conn.execute("DELETE FROM tag_group_of WHERE tag = ?", (tag,))
             self.conn.execute("DELETE FROM tag_covers WHERE tag = ?", (tag,))
-        self.reload()
+        for ts in self._by_item.values():
+            ts.discard(tag)
 
     # grupos (pastas que juntam tags; um nível só)
     def groups(self) -> list[str]:

@@ -35,6 +35,7 @@ class Compartilhado(QObject):
     tags_changed = Signal()           # chegaram tags/novidades de outras pessoas
     items_changed = Signal(list)      # outras pessoas mexeram nestas categorias (chave da categoria de cima)
     locks_changed = Signal()
+    ready = Signal()                  # tags da biblioteca montadas (depois de bind)
 
     def __init__(self, db):
         super().__init__()
@@ -52,6 +53,7 @@ class Compartilhado(QObject):
         self.error = ""
         self._syncing = False
         self._polling = False
+        self._rebuilding = False
 
     # ------------------------------------------------------------------ ligar
     @property
@@ -74,23 +76,13 @@ class Compartilhado(QObject):
         folder.mkdir(exist_ok=True)
         self.db.sink = None
         self.db.open(folder / f"{lib.id}.db")
+        self.db.sink = self._sink
         if self.db.meta_get("lib_id") != lib.id:
-            offsets: dict[str, int] = {}
-            events = lib.all_events(offsets)
-            self.db.rebuild(events)
-            self.db.meta_set("lib_id", lib.id)
-            self.db.meta_set("offsets", offsets)
-            self.db.meta_set("last_key", list(ev_key(events[-1])) if events else [0, "", 0])
-            old = data_dir() / "biblioteca.db"
-            self.db.sink = self._sink
-            if old.exists() and _old_has_data(old):
-                if not any(e.get("k") == "db" for e in events):
-                    self.db.seed_from(old)              # biblioteca nova: leva as tags que já existiam
-                else:
-                    self.offer_old_tags = True          # já tem tags de outras pessoas: pergunta antes
+            # 1ª vez neste computador: monta as tags num ajudante (a janela abre e as tags aparecem em seguida)
+            self._rebuild_async(lib, first=True)
         else:
-            self.db.sink = self._sink
             self.sync(wait=True)
+            QTimer.singleShot(0, lambda: self.lib is lib and self.ready.emit())
         try:
             from . import perfil
             lib.publish_profile(profile, perfil.avatar_png_bytes(profile))
@@ -136,15 +128,12 @@ class Compartilhado(QObject):
             return
         lib = self.lib
         snap = dict(self.db.meta_get("offsets", {}) or {})
-        last = tuple(self.db.meta_get("last_key") or (0, "", 0))
 
         def work():
             info = rede._read_json(os.path.join(lib.root, "biblioteca.json"))
             offsets = dict(snap)
             new = lib.read_new(offsets)
-            dbev = sorted((e for e in new if e.get("k") == "db"), key=ev_key)
-            everything = lib.all_events() if dbev and ev_key(dbev[0]) < last else None
-            return info, offsets, new, everything
+            return info, offsets, new, None
 
         def done(res):
             self._syncing = False
@@ -161,6 +150,77 @@ class Compartilhado(QObject):
                 pass
             return
         self._syncing = True
+        segundo_plano.run_async(work, done, failed)
+
+    def _rebuild_async(self, lib, first: bool = False) -> None:
+        """Remonta as tags do zero num arquivo separado (num ajudante) e troca na janela quando termina.
+
+        O que chegar, ou o que eu gravar, enquanto monta é lido pelo sync() logo depois da troca."""
+        if self._rebuilding:
+            return
+        import uuid
+        from .database import TagDB
+        self._rebuilding = True
+        self._syncing = True
+        tmp = data_dir() / "bibliotecas" / f"{lib.id}.montando-{uuid.uuid4().hex[:6]}.db"
+
+        def cleanup():
+            for suf in ("", "-wal", "-shm", "-journal"):
+                try:
+                    os.remove(str(tmp) + suf)
+                except OSError:
+                    pass
+
+        def work():
+            offsets: dict[str, int] = {}
+            events = lib.all_events(offsets)
+            TagDB.build_file(tmp, events)
+            last = list(ev_key(events[-1])) if events else [0, "", 0]
+            return offsets, last, any(e.get("k") == "db" for e in events)
+
+        def done(res):
+            self._rebuilding = False
+            self._syncing = False
+            try:
+                if self.lib is not lib:
+                    return
+                offsets, last, has_db = res
+                self.db.replace_shared(tmp)
+                self.db.meta_set("offsets", offsets)
+                self.db.meta_set("last_key", last)
+                if first:
+                    self.db.meta_set("lib_id", lib.id)
+                    old = data_dir() / "biblioteca.db"
+                    if old.exists() and _old_has_data(old):
+                        if not has_db:
+                            self.db.seed_from(old)          # biblioteca nova: leva as tags que já existiam
+                        else:
+                            self.offer_old_tags = True      # já tem tags de outras pessoas: pergunta antes
+                self.tags_changed.emit()
+                if first:
+                    self.ready.emit()
+            finally:
+                cleanup()
+            self.sync()
+
+        def failed(_e):
+            self._rebuilding = False
+            self._syncing = False
+            cleanup()
+            if self.lib is lib:                  # sem ajudante: monta aqui mesmo (como antes)
+                offsets: dict[str, int] = {}
+                try:
+                    events = lib.all_events(offsets)
+                except OSError:
+                    return
+                self.db.rebuild(events)
+                self.db.meta_set("offsets", offsets)
+                self.db.meta_set("last_key", list(ev_key(events[-1])) if events else [0, "", 0])
+                if first:
+                    self.db.meta_set("lib_id", lib.id)
+                    self.ready.emit()
+                self.tags_changed.emit()
+
         segundo_plano.run_async(work, done, failed)
 
     def _apply_sync(self, lib, snap: dict, info, offsets: dict, new: list, everything) -> None:
@@ -181,7 +241,13 @@ class Compartilhado(QObject):
         if dbev:
             last = tuple(self.db.meta_get("last_key") or (0, "", 0))
             if ev_key(dbev[0]) < last:
-                self.db.rebuild(everything if everything is not None else lib.all_events())
+                # evento mais antigo que o último aplicado: remonta tudo na ordem certa (num ajudante)
+                self._rebuild_async(lib)
+                cats = sorted({e.get("cat", "").split("/")[0] for e in new
+                               if e.get("k") in ("op", "undo") and e.get("u") != lib.uid and e.get("cat")})
+                if cats:
+                    self.items_changed.emit(cats)
+                return
             else:
                 self.db.apply_events(dbev)
             self.db.meta_set("last_key", list(max(last, ev_key(dbev[-1]))))

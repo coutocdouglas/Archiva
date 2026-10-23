@@ -170,14 +170,18 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
         QMessageBox.information(w, "Em uso", "Alguém está mexendo nestas pastas agora:\n\n" + "\n".join(busy)
                                 + "\n\nTente de novo em instantes.")
         return 0, 0, []
-    moved = discarded = 0
-    errors = []
-    merge_pairs, merge_keys = [], []
+    # os arquivos são movidos num ajudante (a janela continua respondendo, com andamento); travas, registro
+    # para o desfazer e conferências continuam iguais. O banco de tags (só na janela) é atualizado no fim.
     changed: list[str] = []
-    QApplication.setOverrideCursor(Qt.WaitCursor)
-    try:
-        for ch in todo:
+    db_moves: list[tuple[str, str]] = []      # preenchidos pelo ajudante (valem mesmo se ele parar no meio)
+
+    def work(report):
+        moved = discarded = 0
+        errors = []
+        merge_pairs, merge_keys = [], []
+        for i, ch in enumerate(todo):
             a = ch.asset
+            report(i, len(todo), f"{a.name}…")
             if ch.action == "discard":
                 rec = []
                 try:
@@ -188,13 +192,17 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
                 except OSError as e:
                     errors.append(f"{a.name}: {e}")
                 continue
-            r = intake.move_into(a, ch.dest.path, ch.new_name)
+            try:
+                r = intake.move_into(a, ch.dest.path, ch.new_name)
+            except OSError as e:
+                errors.append(f"{a.name}: {e}")
+                continue
             if not r.ok:
                 errors.append(f"{a.name}: {r.message}")
                 continue
             new_key = f"{ch.dest.key}/{ch.new_name}"
-            changed += [a.key, new_key]
-            w.db.move_item_data(a.key, new_key)
+            changed.extend([a.key, new_key])
+            db_moves.append((a.key, new_key))
             same = ch.dest.key == a.category
             if merge_source is not None:          # juntar pastas: um registro só no fim (desfaz tudo de uma vez)
                 merge_pairs += r.pairs
@@ -208,16 +216,34 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
             if r.left_behind:
                 errors.append(f"{a.name}: imagens extras ficaram na pasta de origem")
         if merge_source is not None:
+            report(len(todo), len(todo), "Apagando as pastas que ficaram vazias…")
             _remove_empty_tree(merge_source.path)
             if merge_pairs:
                 dest = todo[0].dest
                 w.log_op(op if op in ("juntar", "absorver") else "juntar", dest.key, dest.key,
                          f"{pretty(merge_source.key)} → {pretty(dest.key)} ({len(merge_keys)} itens)",
                          merge_pairs, extra={"keys": merge_keys})
+        return moved, discarded, errors
+
+    from . import segundo_plano
+    moved = discarded = 0
+    errors = []
+    try:
+        moved, discarded, errors = segundo_plano.wait(
+            w, "Organizando…" if merge_source is None else f"Juntando {pretty(merge_source.key)}…", work)
+    except Exception as e:  # noqa: BLE001 — erro inesperado: mostra e relê as categorias inteiras
+        errors.append(str(e))
+        changed.clear()
     finally:
-        QApplication.restoreOverrideCursor()
         for k in got:
             w.shared.release(k)
+    for old_key, new_key in db_moves:        # tags, coleções e marcações acompanham o item
+        w.db.move_item_data(old_key, new_key)
+    if not changed and errors and merge_source is None:
+        for t in tops:                        # não sei o que mudou: relê as categorias inteiras
+            w.refresh_category(t)
+        w.entrada.fill_categories()
+        return moved, discarded, errors
     if merge_source is not None:          # juntar/absorver muda as subpastas: relê a categoria inteira
         for t in tops:
             w.refresh_category(t)

@@ -2,6 +2,14 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.4
+- **Organizar, Mover para… e Juntar pastas sem congelar:** os arquivos são movidos em segundo plano, com uma janela de andamento. Antes, a janela ficava parada com o cursor de espera até terminar (vários segundos com muitos itens). Travas, histórico e desfazer funcionam como antes.
+- Atualizar prévia e Comparar pasta e compactado também mostram andamento em vez de travar.
+- **Tags mais rápidas:** levar as tags junto ao mover itens ficou mais de 100 vezes mais rápido, e remontar as tags da equipe ficou cerca de 9 vezes mais rápido e acontece em segundo plano. Isso acontecia sozinho quando duas pessoas gravavam tags quase ao mesmo tempo, e travava a janela por 1 a 2 segundos (mais, com o tempo).
+- Abrir a biblioteca pela primeira vez num computador não trava mais: a janela abre e as tags aparecem logo em seguida.
+- **Histórico abre na hora:** a conferência de "dá para desfazer?" é feita em segundo plano, de cima para baixo.
+- Corrigido: depois de Juntar pastas, a categoria que saiu podia continuar aparecendo vazia na lista até atualizar.
+
 ## 1.2.3
 - **Extrair, mover e classificar sem engasgos:** depois de cada item pronto, o Archiva relê só aquele item, e não a categoria inteira. Num lote de 20 extrações na rede, a janela deixava de responder por uns 7 segundos no total; agora não trava.
 - **Leitura da biblioteca até 10 vezes mais rápida:** o Atualizar (F5) e a primeira abertura leem várias categorias ao mesmo tempo e percorrem cada pasta de modelo uma vez só. Na rede, de uns 10 segundos para cerca de 1 segundo.

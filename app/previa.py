@@ -256,8 +256,9 @@ def update_with(w, a: Asset, path: str) -> None:
         QMessageBox.information(w, "Em uso", "\n".join(busy))
         return
     old_preview = a.preview
+    from . import segundo_plano
     try:
-        moves = apply(root, a, path)
+        moves = segundo_plano.wait(w, f"Trocando a prévia de {a.name}…", lambda: apply(root, a, path))
     except OSError as e:
         QMessageBox.warning(w, "Atualizar prévia", f"Não foi possível trocar a prévia: {e}\n\nNada foi alterado.")
         return
