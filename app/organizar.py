@@ -259,7 +259,9 @@ def thumb_pixmap(path: str | None, size: int) -> QPixmap | None:
     if not path:
         return None
     k = (path, size)
-    if k not in _PIX:
+    if k in _PIX:
+        _PIX[k] = _PIX.pop(k)          # mais usada vai para o fim (as do começo saem primeiro)
+    else:
         r = QImageReader(path)
         r.setAutoTransform(True)
         sz = r.size()
@@ -267,6 +269,8 @@ def thumb_pixmap(path: str | None, size: int) -> QPixmap | None:
             r.setScaledSize(sz.scaled(size * 2, size * 2, Qt.KeepAspectRatio))
         img = r.read()
         _PIX[k] = QPixmap.fromImage(img) if not img.isNull() else None
+        while len(_PIX) > 300:
+            _PIX.pop(next(iter(_PIX)))
     return _PIX[k]
 
 

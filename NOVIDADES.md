@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.2
+- **Tags abre na hora:** a página de Tags deixou de perguntar ao servidor a data de cada prévia (na rede, ela chegava a travar uns 6 segundos ao abrir e a cada tag nova de um colega). A data agora vem junto com a leitura da pasta.
+- **Miniaturas mais rápidas ao rolar:** o Archiva carrega primeiro as miniaturas que estão na tela. Ao arrastar a barra até o fim da biblioteca, as do fim aparecem logo, sem esperar todas as do caminho.
+- **Menos memória:** o Archiva guarda na memória só as miniaturas usadas mais recentemente (antes guardava todas e podia passar de 1 GB). As cópias no computador que não são usadas há 4 meses são apagadas sozinhas.
+- Quando um colega coloca tags, só a página que está aberta se atualiza; as outras se atualizam ao serem abertas.
+
 ## 1.2.1
 - **Possíveis repetidos (Organização, administrador):** o Archiva compara as prévias da biblioteca inteira (um repetido pode estar na pasta errada) e mostra cada par lado a lado, com prévia, categoria, tipo (pasta ou compactado), tamanho, número de arquivos, resolução da prévia e quanto se parecem.
 - Em cada par: **Manter A**, **Manter B** ou **Manter os dois**. O que sai vai para _DESCARTADOS (apagado depois do prazo do backup) e as tags e coleções dele passam para o que fica. Dá para desfazer pelo Histórico. "Manter os dois" marca o par como diferente para a equipe toda e ele não aparece de novo.

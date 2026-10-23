@@ -1571,8 +1571,10 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.details.update_completer()
         self.details.refresh()
         self.grid.viewport().update()
+        # só a página que está na tela; as outras se atualizam quando a pessoa abrir (ver _on_tab)
+        cur = self.tabs.currentWidget() if hasattr(self, "tabs") else None
         for page in (getattr(self, "home", None), getattr(self, "tags_page", None), getattr(self, "colecoes", None)):
-            if page is not None and hasattr(page, "refresh"):
+            if page is not None and page is cur and hasattr(page, "refresh"):
                 try:
                     page.refresh()
                 except Exception:  # noqa: BLE001
@@ -1774,8 +1776,14 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.sidebar.buttons["aprender"].set_badge(n)
 
     def _rebuild_search_text(self, assets=None):
+        """Texto de busca (nome, categoria e tags). Só refaz os itens cujas tags mudaram desde a última vez."""
         for a in (assets or self.all_assets):
-            a.search_text = normalize(" ".join([a.name, a.category, *self.db.tags_of(a.key)]))
+            tags = self.db.tags_of(a.key)
+            sig = (a.key, frozenset(tags))
+            if a.search_text and getattr(a, "_search_sig", None) == sig:
+                continue
+            a.search_text = normalize(" ".join([a.name, a.category, *tags]))
+            a._search_sig = sig
 
     def _fill_category_tree(self):
         prev = self.current_cat
@@ -1808,13 +1816,14 @@ class MainWindow(FramelessMixin, QMainWindow):
     def _fill_tag_filter(self):
         self.tag_filter.blockSignals(True)
         self.tag_filter.clear()
-        for t, n in self.db.all_tags():
+        tags = self.db.all_tags()
+        for t, n in tags:
             it = QListWidgetItem(f"{t}  ({n})")
             it.setData(Qt.UserRole, t)
             it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
             it.setCheckState(Qt.Checked if t in self.active_tags else Qt.Unchecked)
             self.tag_filter.addItem(it)
-        self.active_tags &= {t for t, _ in self.db.all_tags()}
+        self.active_tags &= {t for t, _ in tags}
         self.tag_filter.blockSignals(False)
 
     # ----------------------------------------------------------------- filtro

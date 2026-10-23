@@ -217,7 +217,6 @@ class TagsPage(QWidget):
         self.tag: str | None = None            # tag aberta na galeria
         self.cover_keys: set[str] = set()
         self._bg: dict[str, QColor] = {}
-        self._mtime: dict[str, float] = {}
         self._tagged: dict[str, list[Asset]] = {}
 
         lay = QVBoxLayout(self)
@@ -330,15 +329,12 @@ class TagsPage(QWidget):
             self._bg[path] = edge_color(pix)
         return self._bg[path]
 
-    def _mt(self, a: Asset) -> float:
+    @staticmethod
+    def _mt(a: Asset) -> float:
+        """Data da prévia, lida junto com a listagem da pasta (sem perguntar ao servidor)."""
         if not a.preview:
             return 0.0
-        if a.preview not in self._mtime:
-            try:
-                self._mtime[a.preview] = os.path.getmtime(a.preview)
-            except OSError:
-                self._mtime[a.preview] = 0.0
-        return self._mtime[a.preview]
+        return getattr(a, "preview_mtime", 0.0) or getattr(a, "added_time", 0.0) or 0.0
 
     def _collect(self):
         self._tagged = {}

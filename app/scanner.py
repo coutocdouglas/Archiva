@@ -137,6 +137,8 @@ class Asset:
     members: list[str] = field(default_factory=list)         # todos os arquivos/pastas do grupo (usado na Entrada)
     search_text: str = ""
     added_time: float = 0.0     # data da prévia/pasta (lida junto com a listagem; usada no Início)
+    preview_mtime: float = 0.0  # data e tamanho da prévia, também da listagem (cache de assinaturas, capas)
+    preview_size: int = 0
     dup_archive: str | None = None       # compactado com o mesmo nome de uma pasta já extraída (botão Comparar)
     dup_archive_type: str | None = None
 
@@ -217,6 +219,7 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
         return cat
 
     mtimes: dict[str, float] = {}
+    sizes: dict[str, int] = {}
     for e in entries:
         lname = e.name.casefold()
         if lname in IGNORED_FILES or os.path.splitext(lname)[1] in PARTIAL_EXT:
@@ -233,7 +236,10 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
             k = strip_key(e.name)
         g = groups.setdefault(k.casefold(), {"name": k, "images": [], "dirs": [], "archives": [], "max": [], "other": []})
         try:
-            mtimes[e.path] = e.stat().st_mtime      # no Windows vem junto com a listagem (sem custo extra)
+            st = e.stat()                           # no Windows vem junto com a listagem (sem custo extra)
+            mtimes[e.path] = st.st_mtime
+            if not is_dir:
+                sizes[e.path] = st.st_size
         except OSError:
             pass
         if is_dir:
@@ -294,6 +300,8 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
         files = [mtimes[m] for m in g["images"] + [p for p, _ in g["archives"]] + g["max"] if mtimes.get(m)]
         a.added_time = min(files) if files else max((mtimes.get(m, 0.0) for m in a.members), default=0.0)
         a.preview = sorted(g["images"], key=lambda p: (os.path.splitext(p)[1].lower() not in (".jpg", ".jpeg", ".png"), p))[0] if g["images"] else None
+        if a.preview:
+            a.preview_mtime, a.preview_size = mtimes.get(a.preview, 0.0), sizes.get(a.preview, 0)
 
         if folder:
             a.folder, a.max_files = folder, folder_max

@@ -15,7 +15,7 @@ from PySide6.QtCore import QThread, Signal
 
 from .scanner import Category, list_categories, scan_category
 
-VERSION = 4  # 4: Asset.dup_archive
+VERSION = 4  # 4: Asset.dup_archive (Asset.preview_mtime/size: índice antigo usa 0 e cai no added_time)
 
 
 def cache_file(cache_dir: Path, root: str) -> Path:
