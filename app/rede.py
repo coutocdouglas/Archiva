@@ -86,6 +86,7 @@ class Biblioteca:
         self._seq = self._last_seq()
         self._held: dict[str, str] = {}          # chave -> arquivo da trava que eu tenho
         self._users_cache: dict[str, tuple[float, dict]] = {}
+        self._lock_cache: dict[str, tuple[float, dict]] = {}     # arquivo -> (criação, conteúdo): não muda
 
     # ------------------------------------------------------------------ relógio
     def measure_skew(self) -> float:
@@ -308,8 +309,11 @@ class Biblioteca:
         for k in list(self._held):
             self.release(k)
 
-    def heartbeat(self) -> None:
-        for path in self._held.values():
+    def held_files(self) -> list[str]:
+        return list(self._held.values())
+
+    def heartbeat(self, paths: list[str] | None = None) -> None:
+        for path in (self.held_files() if paths is None else paths):
             try:
                 os.utime(path, None)
             except OSError:
@@ -321,18 +325,38 @@ class Biblioteca:
         except OSError:
             return True
 
-    def locks(self) -> dict[str, dict]:
-        """Travas ativas de OUTRAS pessoas/sessões: chave -> dados."""
+    def locks(self, held: list[str] | None = None) -> dict[str, dict]:
+        """Travas ativas de OUTRAS pessoas/sessões: chave -> dados.
+
+        Pode rodar num ajudante (passe held=held_files(), lido na janela). A data vem da listagem da pasta e o
+        conteúdo de cada trava é lido uma vez só (ele não muda; só a data, a cada batimento)."""
         out = {}
+        mine = set(self.held_files() if held is None else held)
         folder = os.path.join(self.root, "travas")
         try:
             entries = [e for e in os.scandir(folder) if e.name.endswith(".lock")]
         except OSError:
             return out
+        now = self.now()
+        cache = dict(self._lock_cache)
+        seen = {}
         for e in entries:
-            if e.path in self._held.values() or self._stale(e.path):
+            if e.path in mine:
                 continue
-            d = _read_json(e.path, {}) or {}
+            try:
+                st = e.stat()
+            except OSError:
+                continue
+            if now - st.st_mtime > LOCK_STALE:
+                continue
+            born = getattr(st, "st_birthtime", None) or st.st_ctime
+            c = cache.get(e.path)
+            if c and c[0] == born:
+                d = c[1]
+            else:
+                d = _read_json(e.path, {}) or {}
+            seen[e.path] = (born, d)
             if d.get("key"):
                 out[d["key"]] = d
+        self._lock_cache = seen
         return out

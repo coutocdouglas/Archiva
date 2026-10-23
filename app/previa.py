@@ -266,7 +266,7 @@ def update_with(w, a: Asset, path: str) -> None:
     w.log_op("previa", a.category, a.key, f"prévia de {a.name}", moves)
     for p in {old_preview, target_path(a), *copies} - {None}:
         w.forget_image(p)
-    w.refresh_category(a.category.split("/")[0])
+    w.refresh_category(a.category.split("/")[0], [a.key])
     w.statusBar().showMessage(f"{a.name}: prévia atualizada.", 6000)
 
 

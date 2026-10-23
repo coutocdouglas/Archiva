@@ -90,6 +90,50 @@ def find_max_files(folder: str, max_depth: int = 4) -> list[str]:
     return found
 
 
+JUNK_FILES = {"thumbs.db", "desktop.ini", ".ds_store"}
+JUNK_DIRS = {"__macosx"}
+
+
+def walk_item(folder: str, max_depth: int = 4) -> tuple[list[str], list[str], list[str]]:
+    """Uma passada só pela pasta do item: (.max do mais raso ao mais fundo, todos os arquivos, lixo do sistema).
+
+    Os .max seguem a mesma regra de find_max_files (sem olhar dentro da MAPS, até max_depth níveis); os arquivos
+    e o lixo são os mesmos de layout.walk_files. Assim a leitura não percorre a pasta duas vezes.
+    """
+    found: list[str] = []
+    files: list[str] = []
+    junk: list[str] = []
+
+    def walk(d: str, depth: int, in_maps: bool):
+        try:
+            entries = sorted(os.scandir(d), key=lambda e: natural_key(e.name))
+        except OSError:
+            return
+        subdirs = []
+        for e in entries:
+            try:
+                n = e.name.casefold()
+                if e.is_dir():
+                    if n in JUNK_DIRS:
+                        junk.append(e.path)
+                    else:
+                        subdirs.append((e.path, in_maps or n in MAPS_NAMES))
+                    continue
+                if n in JUNK_FILES:
+                    junk.append(e.path)
+                    continue
+                files.append(e.path)
+                if not in_maps and depth <= max_depth and n.endswith(MAX_EXT):
+                    found.append(e.path)
+            except OSError:
+                continue
+        for sd, m in subdirs:
+            walk(sd, depth + 1, m)
+
+    walk(folder, 0, False)
+    return found, files, junk
+
+
 def pick_primary(max_files: list[str]) -> str | None:
     """Escolhe o .max principal (o que o cartão leva para o Max): prefere nomes com 'corona', depois os que não
     são versão WIRE e, entre esses, o maior arquivo (num conjunto, costuma ser o SET completo)."""
@@ -209,7 +253,9 @@ def looks_like_category(folder: str) -> bool:
     return bool(img_stems & other_stems)
 
 
-def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: bool = True) -> Category:
+def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: bool = True,
+                  only: set[str] | None = None) -> Category:
+    """Lê uma categoria. `only` (nomes em casefold): lê só esses itens (o resto da pasta não é aberto)."""
     cat = Category(key=key, name=name, path=path)
     groups: dict[str, dict] = {}
 
@@ -234,6 +280,8 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
             k = e.name.strip()
         else:
             k = strip_key(e.name)
+        if only is not None and k.casefold() not in only:
+            continue
         g = groups.setdefault(k.casefold(), {"name": k, "images": [], "dirs": [], "archives": [], "max": [], "other": []})
         try:
             st = e.stat()                           # no Windows vem junto com a listagem (sem custo extra)
@@ -265,14 +313,19 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
         nm = g["name"]
         folder_max: list[str] = []
         folder = None
+        walked = None            # (arquivos, lixo) da pasta do item, para a conferência do padrão
+        layout_on = CHECK_LAYOUT and check_layout
         alone = not g["images"] and not g["archives"] and not g["max"]
         sub_dirs = [d for d in g["dirs"] if alone and depth < 3 and looks_like_category(d)]
         for d in g["dirs"]:
             if d in sub_dirs:
                 continue
-            mf = find_max_files(d)
+            if layout_on:
+                mf, wf, wj = walk_item(d)
+            else:
+                mf, wf, wj = find_max_files(d), None, None
             if mf:
-                folder, folder_max = d, mf
+                folder, folder_max, walked = d, mf, (wf, wj) if wf is not None else None
                 break
         if sub_dirs and not folder:
             for d in sub_dirs:
@@ -332,7 +385,7 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
         if a.kind == "folder" and CHECK_LAYOUT and check_layout:
             from .layout import check_layout  # import tardio (evita import circular)
             outer = a.preview if a.preview and os.path.dirname(a.preview) == path else None
-            a.layout_issues = check_layout(a.folder, outer, UNWANTED_EXT)
+            a.layout_issues = check_layout(a.folder, outer, UNWANTED_EXT, walked)
         if a.kind == "missing" and not a.issues:
             a.issues.append("Só a imagem — arquivo do modelo não encontrado")
         if not a.preview:
@@ -344,12 +397,18 @@ def scan_category(path: str, key: str, name: str, depth: int = 0, check_layout: 
     return cat
 
 
-def scan_library(root: str, progress=None) -> list[Category]:
-    cats = []
+def scan_library(root: str, progress=None, workers: int = 8) -> list[Category]:
+    """Lê todas as categorias, várias ao mesmo tempo (na rede, quase todo o tempo é espera pelo servidor)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     items = list_categories(root)
-    for i, (name, path) in enumerate(items):
-        c = scan_category(path, name, name)
-        cats.append(c)
-        if progress:
-            progress(i + 1, len(items), c)
-    return cats
+    if not items:
+        return []
+    out: dict[str, Category] = {}
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(items))), thread_name_prefix="archiva-scan") as ex:
+        futs = {ex.submit(scan_category, path, name, name): name for name, path in items}
+        for i, f in enumerate(as_completed(futs), 1):
+            c = f.result()
+            out[futs[f]] = c
+            if progress:
+                progress(i, len(items), c)
+    return [out[name] for name, _ in items]

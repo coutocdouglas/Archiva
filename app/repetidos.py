@@ -47,7 +47,7 @@ def find_pairs(assets: list[Asset], cache_path: str, is_ignored, progress=None, 
         if stop and stop():
             return []
         part = with_prev[i:i + chunk]
-        sigs.update(cache.get_many([a.preview for a in part]))
+        sigs.update(cache.get_many([a.preview for a in part], intake.known_of(part)))
         if progress:
             progress(f"Lendo as prévias… {min(i + chunk, len(with_prev))}/{len(with_prev)}")
     items = [(a, sigs[a.preview]) for a in with_prev if a.preview in sigs]
@@ -294,7 +294,7 @@ class RepetidosPanel(QWidget):
         finally:
             for k in locked:
                 self.w.shared.release(k)
-        self.w.refresh_category(drop.category.split("/")[0])
+        self.w.refresh_category(drop.category.split("/")[0], [drop.key])
         self._done_card(card)
         # outros pares com o item que saiu deixam de valer
         for i in reversed(range(self.cards.count())):

@@ -2,6 +2,13 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.3
+- **Extrair, mover e classificar sem engasgos:** depois de cada item pronto, o Archiva relê só aquele item, e não a categoria inteira. Num lote de 20 extrações na rede, a janela deixava de responder por uns 7 segundos no total; agora não trava.
+- **Leitura da biblioteca até 10 vezes mais rápida:** o Atualizar (F5) e a primeira abertura leem várias categorias ao mesmo tempo e percorrem cada pasta de modelo uma vez só. Na rede, de uns 10 segundos para cerca de 1 segundo.
+- **Trabalho com o servidor fora da janela:** tags e mudanças dos colegas, travas, limpeza do backup e de _DESCARTADOS e a conferência das categorias rodam em segundo plano. A janela não dá mais "trancos" a cada poucos segundos quando há gente usando.
+- Possíveis repetidos e a Entrada usam a data e o tamanho das prévias que já vêm na leitura da pasta, sem perguntar ao servidor arquivo por arquivo.
+- A primeira abertura depois de atualizar lê a biblioteca inteira uma vez (agora em poucos segundos).
+
 ## 1.2.2
 - **Tags abre na hora:** a página de Tags deixou de perguntar ao servidor a data de cada prévia (na rede, ela chegava a travar uns 6 segundos ao abrir e a cada tag nova de um colega). A data agora vem junto com a leitura da pasta.
 - **Miniaturas mais rápidas ao rolar:** o Archiva carrega primeiro as miniaturas que estão na tela. Ao arrastar a barra até o fim da biblioteca, as do fim aparecem logo, sem esperar todas as do caminho.

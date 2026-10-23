@@ -154,12 +154,19 @@ def _rel_is_same(src: str, base: str, rel: str) -> bool:
 
 # --------------------------------------------------------------------------- verificação (rápida, para a leitura)
 
-def check_layout(folder: str, outer_preview: str | None, unwanted_ext: set[str]) -> list[str]:
-    """Motivos pelos quais a pasta está fora do padrão (lista vazia = organizada)."""
-    try:
-        files, junk = walk_files(folder)
-    except OSError:
-        return []
+def check_layout(folder: str, outer_preview: str | None, unwanted_ext: set[str],
+                 walked: tuple[list[str], list[str]] | None = None) -> list[str]:
+    """Motivos pelos quais a pasta está fora do padrão (lista vazia = organizada).
+
+    `walked` = (arquivos, lixo) já lidos pela leitura (scanner.walk_item), para não percorrer a pasta de novo."""
+    if walked is not None:
+        files, junk = walked
+    else:
+        try:
+            files, junk = walk_files(folder)
+        except OSError:
+            return []
+    present = {os.path.normcase(f) for f in files}
     if not any(f.lower().endswith(".max") for f in files):
         return []
     plan = plan_layout(files, folder, deep_compare=False)
@@ -176,7 +183,7 @@ def check_layout(folder: str, outer_preview: str | None, unwanted_ext: set[str])
     if outer_preview:
         for r in plan.max_rel:
             stem = os.path.splitext(os.path.join(folder, r))[0]
-            if not any(os.path.exists(stem + e) for e in (".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG")):
+            if not any(os.path.normcase(stem + e) in present for e in (".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG")):
                 reasons.append("Falta a cópia da prévia com o nome do .max")
                 break
     maxes = [r for r in plan.max_rel]

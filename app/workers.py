@@ -27,10 +27,20 @@ class ScanThread(QThread):
     def __init__(self, root: str):
         super().__init__()
         self.root = root
+        self.sigs: dict | None = None
 
     def run(self):
         try:
             cats = scan_library(self.root, lambda i, n, c: self.progress.emit(i, n, c.name))
+            from .indice import all_signatures
+            sigs = {}
+            try:
+                from .segundo_plano import map_parallel
+                for c, s in zip(cats, map_parallel(lambda c: all_signatures(self.root, [c])[c.key], cats)):
+                    sigs[c.key] = s
+                self.sigs = sigs
+            except Exception:  # noqa: BLE001 — sem assinaturas: a janela calcula
+                self.sigs = None
             self.done.emit(cats)
         except Exception as e:  # noqa: BLE001
             self.failed.emit(str(e))

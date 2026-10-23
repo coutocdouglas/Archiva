@@ -325,14 +325,21 @@ class HashCache:
             c.execute("CREATE TABLE IF NOT EXISTS sig (path TEXT PRIMARY KEY, mtime REAL, size INTEGER, "
                       "ver INTEGER, h TEXT, thumb BLOB)")
 
-    def get_many(self, paths: list[str]) -> dict[str, tuple[int, bytes]]:
+    def get_many(self, paths: list[str], known: dict | None = None) -> dict[str, tuple[int, bytes]]:
+        """Assinaturas destas imagens. `known` = {caminho: (data, tamanho)} já lidos na listagem da pasta (sem
+        perguntar ao servidor de novo); o que não estiver lá é conferido com os.stat."""
         out: dict[str, tuple[int, bytes]] = {}
+        known = known or {}
         with sqlite3.connect(self.path) as c:
             for p in paths:
-                try:
-                    st = os.stat(p)
-                except OSError:
-                    continue
+                kn = known.get(p)
+                if kn and kn[0] and kn[1]:
+                    st = os.stat_result((0, 0, 0, 0, 0, 0, kn[1], 0, kn[0], 0))
+                else:
+                    try:
+                        st = os.stat(p)
+                    except OSError:
+                        continue
                 row = c.execute("SELECT mtime, size, ver, h, thumb FROM sig WHERE path = ?", (p,)).fetchone()
                 if row and abs(row[0] - st.st_mtime) < 1 and row[1] == st.st_size and row[2] == SIG_VERSION:
                     out[p] = (int(row[3], 16), bytes(row[4]))
@@ -345,10 +352,16 @@ class HashCache:
         return out
 
 
+def known_of(assets) -> dict:
+    """{prévia: (data, tamanho)} dos itens que já trazem isso da listagem da pasta."""
+    return {a.preview: (a.preview_mtime, a.preview_size) for a in assets
+            if a.preview and getattr(a, "preview_mtime", 0.0) and getattr(a, "preview_size", 0)}
+
+
 def find_similar(new_preview: str, candidates: list[Asset], cache: HashCache,
                  threshold: float = 0.88) -> list[tuple[Asset, float]]:
     paths = [a.preview for a in candidates if a.preview]
-    sigs = cache.get_many([new_preview] + paths)
+    sigs = cache.get_many([new_preview] + paths, known_of(candidates))
     sn = sigs.get(new_preview)
     if sn is None:
         return []

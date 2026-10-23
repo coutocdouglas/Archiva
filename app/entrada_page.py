@@ -311,7 +311,15 @@ class EntradaPage(QWidget):
             if a.key in keep:
                 sm.select(self.model.index(self.model.row_of[a.key]), sm.SelectionFlag.Select)
         p = self.path()
-        dirs = [p] + [os.path.join(dp, d) for dp, dn, _ in os.walk(p) for d in dn]
+        # vigia a Entrada e as pastas de pacote (subcategorias), sem percorrer as pastas dos modelos
+        subs = set()
+        try:
+            subs = {e.path for e in os.scandir(p) if e.is_dir()}       # pastas novas (ainda vazias) também
+        except OSError:
+            pass
+        item_dirs = {m for a in self.items for m in (a.members or []) if a.folder == m}
+        dirs = [p] + sorted((subs | {os.path.dirname(m) for a in self.items for m in (a.members or [])})
+                            - {p} - item_dirs)
         old = self.watcher.directories()
         if old:
             self.watcher.removePaths(old)
@@ -514,13 +522,14 @@ class EntradaPage(QWidget):
         # garante a verificação de repetidos antes de mover
         missing = [a for a in sel if a.preview and (a.key, c.key) not in self.similar]
         if missing:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            try:
-                cache = intake.HashCache(str(self.w.cache_root / "assinaturas.db"))
-                for a in missing:
-                    self.similar[(a.key, c.key)] = intake.find_similar(a.preview, self.scope(c), cache)
-            finally:
-                QApplication.restoreOverrideCursor()
+            from . import segundo_plano
+            cache_path, scope = str(self.w.cache_root / "assinaturas.db"), self.scope(c)
+
+            def work():
+                cache = intake.HashCache(cache_path)
+                return [(a.key, intake.find_similar(a.preview, scope, cache)) for a in missing]
+            for k, found in segundo_plano.wait(self, "Procurando itens repetidos…", work):
+                self.similar[(k, c.key)] = found
 
         top = self.top_of(c)
         # trava a categoria (numeração) e os itens da Entrada: duas pessoas não pegam o mesmo número
@@ -552,6 +561,7 @@ class EntradaPage(QWidget):
 
         fresh, fresh_scope = fresh_scan()
         added, replaced, discarded, errors = [], [], 0, list(busy_items)
+        changed: list[str] = []          # itens da biblioteca que mudaram (a tela relê só eles)
         for a in sel:
             matches = self.similar.get((a.key, c.key)) or []
             choice, existing = DuplicateDialog.KEEP_BOTH, None
@@ -577,6 +587,7 @@ class EntradaPage(QWidget):
                     r = intake.move_into(a, dest, name)
                     if r.ok:
                         replaced.append(name)
+                        changed.append(existing.key)
                         self.w.db.add_addition(existing.key, a.name)
                         self.w.log_op("substituir", c.key, existing.key, f"{name} pela versão nova ({a.name})",
                                       rec + r.pairs)
@@ -588,6 +599,7 @@ class EntradaPage(QWidget):
                 r = intake.move_into(a, c.path, name)
                 if r.ok:
                     added.append(name)
+                    changed.append(f"{c.key}/{name}")
                     self.w.db.add_addition(f"{c.key}/{name}", a.name)
                     self.w.log_op("classificar", c.key, f"{c.key}/{name}", f"{a.name} → {name}", r.pairs)
                     fresh, fresh_scope = fresh_scan()
@@ -600,7 +612,7 @@ class EntradaPage(QWidget):
                 errors.append(f"{a.name}: {e}")
 
         self.refresh()
-        self.w.refresh_category(c.key.split("/")[0])
+        self.w.refresh_category(c.key.split("/")[0], changed)
         parts = []
         if added:
             parts.append(f"{len(added)} adicionado(s) em {c.name}: " + ", ".join(added))

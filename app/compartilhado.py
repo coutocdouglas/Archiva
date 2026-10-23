@@ -7,7 +7,7 @@ import time
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from . import rede
+from . import rede, segundo_plano
 from .config import data_dir
 from .rede import Biblioteca, absolute, ev_key, rel
 
@@ -46,10 +46,12 @@ class Compartilhado(QObject):
         self._sync_timer = QTimer(self, interval=15_000)
         self._sync_timer.timeout.connect(self.sync)
         self._lock_timer = QTimer(self, interval=8_000)
-        self._lock_timer.timeout.connect(self.poll_locks)
+        self._lock_timer.timeout.connect(lambda: self.poll_locks(wait=False))
         self._beat_timer = QTimer(self, interval=30_000)
-        self._beat_timer.timeout.connect(lambda: self.lib and self.lib.heartbeat())
+        self._beat_timer.timeout.connect(self._heartbeat)
         self.error = ""
+        self._syncing = False
+        self._polling = False
 
     # ------------------------------------------------------------------ ligar
     @property
@@ -88,13 +90,13 @@ class Compartilhado(QObject):
                     self.offer_old_tags = True          # já tem tags de outras pessoas: pergunta antes
         else:
             self.db.sink = self._sink
-            self.sync()
+            self.sync(wait=True)
         try:
             from . import perfil
             lib.publish_profile(profile, perfil.avatar_png_bytes(profile))
         except OSError:
             pass
-        self.poll_locks()
+        self.poll_locks(wait=True)
         for t in (self._sync_timer, self._lock_timer, self._beat_timer):
             t.start()
         return True
@@ -127,37 +129,97 @@ class Compartilhado(QObject):
         if e.get("k") == "db" and ev_key(e) > last:
             self.db.meta_set("last_key", list(ev_key(e)))
 
-    def sync(self) -> None:
-        if not self.lib:
+    def sync(self, wait: bool = False) -> None:
+        """Lê os registros novos da equipe. A leitura dos arquivos roda num ajudante; o banco é atualizado
+        na janela quando ela termina (wait=True: tudo agora, usado ao abrir a biblioteca)."""
+        if not self.lib or self._syncing:
             return
-        self.lib.reload_info()
-        offsets = self.db.meta_get("offsets", {}) or {}
-        try:
-            new = self.lib.read_new(offsets)
-        except OSError:
+        lib = self.lib
+        snap = dict(self.db.meta_get("offsets", {}) or {})
+        last = tuple(self.db.meta_get("last_key") or (0, "", 0))
+
+        def work():
+            info = rede._read_json(os.path.join(lib.root, "biblioteca.json"))
+            offsets = dict(snap)
+            new = lib.read_new(offsets)
+            dbev = sorted((e for e in new if e.get("k") == "db"), key=ev_key)
+            everything = lib.all_events() if dbev and ev_key(dbev[0]) < last else None
+            return info, offsets, new, everything
+
+        def done(res):
+            self._syncing = False
+            if self.lib is lib:
+                self._apply_sync(lib, snap, *res)
+
+        def failed(_e):
+            self._syncing = False
+
+        if wait:
+            try:
+                done(work())
+            except OSError:
+                pass
             return
+        self._syncing = True
+        segundo_plano.run_async(work, done, failed)
+
+    def _apply_sync(self, lib, snap: dict, info, offsets: dict, new: list, everything) -> None:
+        if isinstance(info, dict) and info.get("id") == lib.id:
+            lib.info = info
+        cur = self.db.meta_get("offsets", {}) or {}
+        own = os.path.basename(lib.own_file)
+        if cur.get(own, 0) != snap.get(own, 0):
+            # gravei eventos enquanto o ajudante lia: os meus já estão no banco
+            new = [e for e in new if e.get("u") != lib.uid]
+            offsets[own] = cur.get(own, 0)
         if not new:
+            if offsets != cur:
+                self.db.meta_set("offsets", offsets)
             return
         self.db.meta_set("offsets", offsets)
         dbev = sorted((e for e in new if e.get("k") == "db"), key=ev_key)
         if dbev:
             last = tuple(self.db.meta_get("last_key") or (0, "", 0))
             if ev_key(dbev[0]) < last:
-                self.db.rebuild(self.lib.all_events())
+                self.db.rebuild(everything if everything is not None else lib.all_events())
             else:
                 self.db.apply_events(dbev)
             self.db.meta_set("last_key", list(max(last, ev_key(dbev[-1]))))
             self.tags_changed.emit()
         cats = sorted({e.get("cat", "").split("/")[0] for e in new
-                       if e.get("k") in ("op", "undo") and e.get("u") != self.lib.uid and e.get("cat")})
+                       if e.get("k") in ("op", "undo") and e.get("u") != lib.uid and e.get("cat")})
         if cats:
             self.items_changed.emit(cats)
 
+    def _heartbeat(self) -> None:
+        if self.lib:
+            lib, paths = self.lib, self.lib.held_files()
+            segundo_plano.run_async(lambda: lib.heartbeat(paths))
+
     # ------------------------------------------------------------------ travas
-    def poll_locks(self) -> None:
+    def poll_locks(self, wait: bool = True) -> None:
+        """Confere as travas dos outros. Pelo relógio (wait=False) roda num ajudante."""
         if not self.lib:
             return
-        cur = self.lib.locks()
+        lib, held = self.lib, self.lib.held_files()
+        if wait:
+            self._apply_locks(lib, lib.locks(held))
+            return
+        if self._polling:
+            return
+        self._polling = True
+
+        def done(cur):
+            self._polling = False
+            if self.lib is lib:
+                self._apply_locks(lib, cur)
+
+        def failed(_e):
+            self._polling = False
+
+        segundo_plano.run_async(lambda: lib.locks(held), done, failed)
+
+    def _apply_locks(self, lib, cur: dict) -> None:
         if cur != self._locks:
             self._locks = cur
             self.locks_changed.emit()

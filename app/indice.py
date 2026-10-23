@@ -15,7 +15,7 @@ from PySide6.QtCore import QThread, Signal
 
 from .scanner import Category, list_categories, scan_category
 
-VERSION = 4  # 4: Asset.dup_archive (Asset.preview_mtime/size: índice antigo usa 0 e cai no added_time)
+VERSION = 5  # 4: Asset.dup_archive; 5: Asset.preview_mtime/preview_size
 
 
 def cache_file(cache_dir: Path, root: str) -> Path:
@@ -99,17 +99,28 @@ class VerifyThread(QThread):
             if key not in names:
                 self.removed.emit(key)
                 n += 1
-        for name, path in current:
+        from .segundo_plano import map_parallel
+        # 1) uma listagem por categoria, várias ao mesmo tempo
+        sigs = map_parallel(lambda t: signature(self.cats.get(t[0]), t[1]), current)
+        todo = [(name, path) for (name, path), sig in zip(current, sigs)
+                if self.cats.get(name) is None or self.sigs.get(name) != sig]
+        if self.isInterruptionRequested():
+            return
+
+        # 2) relê por inteiro só as que mudaram (também em paralelo)
+        def rescan(t):
             if self.isInterruptionRequested():
-                return
-            old = self.cats.get(name)
-            sig = signature(old, path)
-            if old is not None and self.sigs.get(name) == sig:
-                continue
+                return None
+            name, path = t
             try:
                 new = scan_category(path, name, name)
+                return new, signature(new, path)
             except Exception:  # noqa: BLE001
-                continue
-            self.changed.emit(new, signature(new, path))
-            n += 1
+                return None
+        for res in map_parallel(rescan, todo):
+            if self.isInterruptionRequested():
+                return
+            if res is not None:
+                self.changed.emit(*res)
+                n += 1
         self.finished_ok.emit(n)

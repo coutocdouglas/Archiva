@@ -173,6 +173,7 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
     moved = discarded = 0
     errors = []
     merge_pairs, merge_keys = [], []
+    changed: list[str] = []
     QApplication.setOverrideCursor(Qt.WaitCursor)
     try:
         for ch in todo:
@@ -183,6 +184,7 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
                     intake.discard(a, root, rec)
                     w.log_op("descartar", a.category, a.key, f"{a.name} (Organização)", rec)
                     discarded += 1
+                    changed.append(a.key)
                 except OSError as e:
                     errors.append(f"{a.name}: {e}")
                 continue
@@ -191,6 +193,7 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
                 errors.append(f"{a.name}: {r.message}")
                 continue
             new_key = f"{ch.dest.key}/{ch.new_name}"
+            changed += [a.key, new_key]
             w.db.move_item_data(a.key, new_key)
             same = ch.dest.key == a.category
             if merge_source is not None:          # juntar pastas: um registro só no fim (desfaz tudo de uma vez)
@@ -215,8 +218,15 @@ def apply_changes(w, changes: list[Change], op: str, merge_source: Category | No
         QApplication.restoreOverrideCursor()
         for k in got:
             w.shared.release(k)
-    for t in tops:
-        w.refresh_category(t)
+    if merge_source is not None:          # juntar/absorver muda as subpastas: relê a categoria inteira
+        for t in tops:
+            w.refresh_category(t)
+    else:                                  # só os itens que saíram e os que chegaram
+        per_top: dict[str, list[str]] = {}
+        for k in changed:
+            per_top.setdefault(k.split("/")[0], []).append(k)
+        for t in tops:
+            w.refresh_category(t, per_top.get(t) or None)
     if merge_source is not None and not os.path.isdir(merge_source.path) and "/" not in merge_source.key:
         w._on_verify_removed(merge_source.key)      # categoria de cima que ficou vazia sai da lista
     w.entrada.fill_categories()

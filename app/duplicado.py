@@ -328,6 +328,7 @@ def resolve(w, a: Asset) -> None:
         QMessageBox.information(w, "Em uso", "\n".join(busy) + "\n\nTente de novo quando a pessoa terminar.")
         return
     root = w.cfg["library_root"]
+    changed = [a.key]
     try:
         rec, created = [], []
         if dlg.choice == KEEP_FOLDER:
@@ -355,9 +356,10 @@ def resolve(w, a: Asset) -> None:
                     created.append(pv)
             w.log_op("separar", a.category, f"{a.category}/{new}", f"{a.name}: compactado virou {new}",
                      rec, created)
+            changed.append(f"{a.category}/{new}")
     except OSError as e:
         QMessageBox.warning(w, "Comparar", f"Não foi possível concluir ({e}). Nada mais foi alterado.")
     finally:
         for k in got:
             w.shared.release(k)
-    w.refresh_category(a.category.split("/")[0])
+    w.refresh_category(a.category.split("/")[0], changed)

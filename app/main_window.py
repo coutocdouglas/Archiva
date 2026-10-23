@@ -30,6 +30,7 @@ from . import scanner as scanner_mod
 from .scanner import Asset, Category, normalize, scan_category
 from . import theme, ui
 from .janela import TITLE_H, CaptionButtons, FramelessMixin
+from . import segundo_plano
 from .workers import ExtractionManager, ScanThread, ThumbnailCache
 
 ASSET_ROLE = Qt.UserRole + 1
@@ -1694,11 +1695,13 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.data_rev += 1
         self.progress.hide()
         if not from_index:
-            self._sigs = indice.all_signatures(self.cfg["library_root"], cats)
+            sigs = getattr(getattr(self, "_scan", None), "sigs", None)
+            self._sigs = sigs if sigs is not None else indice.all_signatures(self.cfg["library_root"], cats)
             self._save_index()
         self.extractions.library_root = self.cfg["library_root"]
         if not self.extractions.busy():
-            extractor.clean_temp(self.cfg["library_root"])
+            root = self.cfg["library_root"]
+            segundo_plano.run_async(lambda: extractor.clean_temp(root))
             self._clean_backup()
         self._all_cats = cats
         self._apply_visibility()
@@ -2004,7 +2007,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             self.log_op(op, res.category, res.key, res.name, res.moves, res.created, extra)
         self.shared.release(res.key)
         if res.ok:
-            self.refresh_category(res.category.split("/")[0])
+            self.refresh_category(res.category.split("/")[0], [res.key])
             self.statusBar().showMessage(f"{res.name} pronto.", 4000)
         else:
             self.model.refresh_key(res.key)
@@ -2058,24 +2061,109 @@ class MainWindow(FramelessMixin, QMainWindow):
         if hasattr(self, "home"):
             self.home.banner_images.mem.pop(path, None)
 
-    def refresh_category(self, top_key: str):
-        """Relê só uma categoria (depois de extrair) e atualiza a tela."""
+    def refresh_category(self, top_key: str, items=None):
+        """Atualiza a tela depois de mexer nos arquivos de uma categoria.
+
+        `items` = chaves dos itens que mudaram (ex.: "ADORNOS/ADORNO 08"; inclui os que saíram ou entraram):
+        relê só esses itens, na hora (1 a 4 acessos ao servidor). Sem `items` (mudança feita por outra pessoa,
+        desfazer, juntar pastas…), relê a categoria inteira num ajudante e troca quando terminar."""
         self.__dict__.pop("_maps_count", None)
         old = next((c for c in self._all_cats if c.key == top_key), None)
         if not old:
             return
-        # prévias podem ter sido trocadas (aqui, por outra pessoa ou por um desfazer): relê as imagens dela
-        pre = os.path.normcase(os.path.join(old.path, ""))
-        self.thumbs.reload([k for k in list(self.thumbs.mem) if os.path.normcase(k).startswith(pre)])
-        if hasattr(self, "home"):
-            bm = self.home.banner_images.mem
-            for k in [k for k in bm if os.path.normcase(k).startswith(pre)]:
-                bm.pop(k, None)
         self.schedule_dups(20000)
-        new = scan_category(old.path, old.key, old.name)
+        gens = self.__dict__.setdefault("_cat_gen", {})
+        gens[top_key] = gens.get(top_key, 0) + 1
+        if items and self._refresh_items(old, list(items)):
+            return
+        self._rescan_category_async(old)
+
+    def _refresh_items(self, top: Category, keys: list[str]) -> bool:
+        """Relê só estes itens e troca no lugar. False = algo mudou de estrutura (relê a categoria inteira)."""
+        def find(key):
+            stack = [top]
+            while stack:
+                c = stack.pop()
+                if c.key == key:
+                    return c
+                stack.extend(c.children)
+            return None
+
+        by_cat: dict[str, set[str]] = {}
+        for k in keys:
+            if "/" not in k or k.split("/")[0] != top.key:
+                return False
+            ck, nm = k.rsplit("/", 1)
+            by_cat.setdefault(ck, set()).add(nm.casefold())
+        old_prev, changed = [], []
+        for ck, names in by_cat.items():
+            cat = find(ck)
+            if cat is None:
+                return False
+            try:
+                fresh = scan_category(cat.path, cat.key, cat.name, depth=ck.count("/"), only=names)
+            except Exception:  # noqa: BLE001
+                return False
+            if fresh.children:                    # virou subcategoria: precisa da leitura completa
+                return False
+            old_prev += [a.preview for a in cat.assets if a.name.casefold() in names and a.preview]
+            kept = [a for a in cat.assets if a.name.casefold() not in names]
+            from .scanner import natural_key
+            cat.assets[:] = sorted(kept + fresh.assets, key=lambda a: natural_key(a.name))   # mesma lista (cópias)
+            changed += fresh.assets
+        for p in {*old_prev, *(a.preview for a in changed if a.preview)}:
+            self.forget_image(p)
         if hasattr(self, "_sigs"):
-            self._sigs[new.key] = indice.signature(new, new.path)
-        self._replace_category(new)
+            self._sigs[top.key] = indice.signature(top, top.path)
+        self._models_changed(changed)
+        return True
+
+    def _rescan_category_async(self, old: Category):
+        busy = self.__dict__.setdefault("_cat_scanning", {})
+        if old.key in busy:
+            busy[old.key] = True                  # já está lendo: lê de novo quando terminar
+            return
+        busy[old.key] = False
+        gen = self._cat_gen.get(old.key, 0)
+        path, key, name = old.path, old.key, old.name
+
+        def work():
+            new = scan_category(path, key, name)
+            return new, indice.signature(new, path)
+
+        def done(res):
+            again = busy.pop(key, False)
+            if again or self._cat_gen.get(key, 0) != gen:
+                cur = next((c for c in self._all_cats if c.key == key), None)
+                if cur is not None:
+                    self._rescan_category_async(cur)
+                    return
+            new, sig = res
+            # prévias podem ter sido trocadas (por outra pessoa ou por um desfazer): relê as imagens da categoria
+            pre = os.path.normcase(os.path.join(path, ""))
+            self.thumbs.reload([k for k in list(self.thumbs.mem) if os.path.normcase(k).startswith(pre)])
+            if hasattr(self, "home"):
+                bm = self.home.banner_images.mem
+                for k in [k for k in bm if os.path.normcase(k).startswith(pre)]:
+                    bm.pop(k, None)
+            if hasattr(self, "_sigs"):
+                self._sigs[key] = sig
+            self._replace_category(new)
+            if not (getattr(self, "_verify", None) and self._verify.isRunning()):
+                QTimer.singleShot(1500, self._save_index)
+
+        def failed(_e):
+            busy.pop(key, None)
+
+        segundo_plano.run_async(work, done, failed)
+
+    def _models_changed(self, assets):
+        """Depois de trocar itens no lugar: atualiza listas, busca, árvore e a grade."""
+        self.data_rev += 1
+        self._apply_visibility()
+        self._rebuild_search_text(assets or None)
+        self._fill_category_tree()
+        self.apply_filter()
         if not (getattr(self, "_verify", None) and self._verify.isRunning()):
             QTimer.singleShot(1500, self._save_index)
 
@@ -2097,10 +2185,22 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.apply_filter()
 
     def _clean_backup(self):
+        """Limpeza do backup e de _DESCARTADOS pelo prazo (num ajudante: na rede ela percorre pastas)."""
         root = self.cfg["library_root"]
-        if root and os.path.isdir(root):
-            extractor.clean_backup(root, self.backup_minutes())
-            intake.clean_discarded(root, self.backup_minutes())
+        if not root or getattr(self, "_cleaning", False):
+            return
+        mins = self.backup_minutes()
+        self._cleaning = True
+
+        def work():
+            if os.path.isdir(root):
+                extractor.clean_backup(root, mins)
+                intake.clean_discarded(root, mins)
+
+        def done(_r):
+            self._cleaning = False
+
+        segundo_plano.run_async(work, done, done)
 
     def eventFilter(self, obj, e):  # noqa: N802
         if obj is getattr(self, "_col_drop", None):
@@ -2427,7 +2527,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             return
         root = self.cfg["library_root"]
         locked, busy = self.try_lock([x.key for x in assets], "excluindo")
-        errors, tops = [], set()
+        errors, tops = [], {}
         try:
             for x in assets:
                 if x.key not in locked:
@@ -2446,12 +2546,12 @@ class MainWindow(FramelessMixin, QMainWindow):
                 tomb = "#excluido/" + x.key            # tags e coleções ficam guardadas aqui até o desfazer
                 self.db.move_item_data(x.key, tomb)
                 self.log_op("excluir", x.category, x.key, f"{x.name} excluído", rec, extra={"keys": [[x.key, tomb]]})
-                tops.add(x.category.split("/")[0])
+                tops.setdefault(x.category.split("/")[0], []).append(x.key)
         finally:
             for k in locked:
                 self.shared.release(k)
-        for t in tops:
-            self.refresh_category(t)
+        for t, keys in tops.items():
+            self.refresh_category(t, keys)
         msgs = busy + errors
         if msgs:
             QMessageBox.information(self, "Excluir", "Alguns itens não foram excluídos:\n\n" + "\n".join(msgs))
@@ -2688,7 +2788,9 @@ class ReviewDialog(QDialog):
             cat = key.rsplit("/", 1)[0] if "/" in key else ""
             self.w.log_op("limpar", cat, key, f"{key.split('/')[-1]} ({len(moves)} arquivo(s))", moves)
         for c in cats:
-            self.w.refresh_category(c)
+            keys = [k for k in per_item if k.split("/")[0] == c]
+            exact = all(os.path.isabs(k) is False and "\\" not in k for k in per_item)   # todos com chave de item
+            self.w.refresh_category(c, keys if exact and keys else None)
         if errors:
             QMessageBox.warning(self, "Revisar", "Alguns arquivos não puderam ser apagados:\n" + "\n".join(errors))
         if removed:
