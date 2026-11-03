@@ -1,7 +1,9 @@
 """Tela de abertura: a logo do Archiva surge letra por letra enquanto a biblioteca é lida.
 
-Fica na frente da janela principal, que carrega por baixo (escondida). Quando a leitura termina e o tempo mínimo
-passou, a janela principal aparece e a abertura esmaece. Se a leitura demorar demais, o programa abre mesmo assim.
+Fica na frente da janela principal, que carrega por baixo (escondida). A janela principal só aparece quando a
+biblioteca foi carregada e conferida por inteiro (e o tempo mínimo passou); aí a abertura esmaece. Enquanto espera,
+o rodapé diz o que o programa está fazendo e a linha de baixo mostra o andamento. Só se algo travar de verdade
+(LIMITE_MS) o programa abre mesmo assim.
 """
 from __future__ import annotations
 
@@ -9,7 +11,7 @@ import math
 import sys
 
 from PySide6.QtCore import QElapsedTimer, QPointF, QPropertyAnimation, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPainter, QPainterPath, QPen, QRadialGradient
 from PySide6.QtWidgets import QApplication, QWidget
 
 from . import theme
@@ -17,7 +19,7 @@ from .config import version
 
 LARGURA, ALTURA = 640, 400
 MINIMO_MS = 1800        # a abertura fica pelo menos este tempo (a animação das letras leva ~1,6 s)
-LIMITE_MS = 8000        # leitura demorada: abre o programa mesmo assim
+LIMITE_MS = 60000       # segurança: se algo travar, abre o programa mesmo assim
 FADE_MS = 420
 AUTOR = "Douglas Couto"
 
@@ -84,6 +86,8 @@ class Abertura(QWidget):
         self._pronto = False
         self._fechando = False
         self._frase = "Lendo a biblioteca"
+        self._alvo: float | None = None        # andamento informado pelo programa (0 a 1); None = ainda sem informação
+        self._mostrado = 0.0                   # o que a linha de andamento mostra (alcança o alvo suavemente)
         self._abrir = lambda: None
         self._timer = QTimer(self, interval=16)
         self._timer.timeout.connect(self._tick)
@@ -97,7 +101,20 @@ class Abertura(QWidget):
         """abrir_janela: função que mostra a janela principal (chamada uma vez, quando a abertura sai)."""
         self._abrir = abrir_janela
 
+    def set_etapa(self, texto: str, fracao: float = -1.0) -> None:
+        """O que o programa está fazendo agora (rodapé) e quanto já andou (0 a 1; negativo = não informado)."""
+        if self._fechando:
+            return
+        self._frase = texto
+        if fracao >= 0:
+            self._alvo = max(self._alvo or 0.0, min(1.0, fracao))     # o andamento nunca volta
+        self.update()
+        if self.isVisible():
+            self.repaint()          # o programa pode estar ocupado logo em seguida: pinta já
+
     def _tick(self) -> None:
+        if self._alvo is not None:
+            self._mostrado += (self._alvo - self._mostrado) * 0.14
         self.update()
         # um diálogo da janela principal (ex.: escolher o que fazer com tags antigas) não pode ficar atrás da abertura
         if not self._fechando and QApplication.activeModalWidget() is not None:
@@ -125,6 +142,7 @@ class Abertura(QWidget):
             return
         self._pronto = True
         self._frase = "Abrindo"
+        self._alvo = 1.0
         falta = max(0, MINIMO_MS - self.tempo_ms())
         QTimer.singleShot(falta, self._esmaecer)
 
@@ -200,21 +218,25 @@ class Abertura(QWidget):
     def _rodape(self, p: QPainter, r: QRectF, t: float) -> None:
         f = theme.ui_font(9.5)
         p.setFont(f)
-        pontos = "." * (1 + int(t * 2) % 3)
+        pontos = "" if "·" in self._frase else "." * (1 + int(t * 2) % 3)     # com contador ("7 de 41") não tem pontinhos
         p.setPen(theme.MUTED)
-        p.drawText(QRectF(24, r.height() - 40, r.width() / 2, 24), Qt.AlignLeft | Qt.AlignVCenter,
-                   self._frase + pontos)
-        p.drawText(QRectF(r.width() / 2, r.height() - 40, r.width() / 2 - 24, 24), Qt.AlignRight | Qt.AlignVCenter,
+        larg = int(r.width() * 0.62)
+        frase = QFontMetrics(f).elidedText(self._frase, Qt.ElideRight, larg - 24)
+        p.drawText(QRectF(24, r.height() - 40, larg, 24), Qt.AlignLeft | Qt.AlignVCenter, frase + pontos)
+        p.drawText(QRectF(r.width() * 0.62, r.height() - 40, r.width() * 0.38 - 24, 24), Qt.AlignRight | Qt.AlignVCenter,
                    AUTOR)
         p.setPen(theme.FAINT)
         p.drawText(QRectF(r.width() / 2, r.height() - 62, r.width() / 2 - 24, 22), Qt.AlignRight | Qt.AlignVCenter,
                    f"v{version()}")
-        # linha de andamento: um trecho que corre de um lado ao outro
-        pos = (t * 0.45) % 1.5 - 0.25
+        # linha de andamento: avança conforme as etapas; antes da primeira informação, um trecho corre de lado a lado
         faixa = QColor(216, 194, 156)
         p.fillRect(QRectF(0, r.height() - 3, r.width(), 3), QColor(216, 194, 156, 30))
+        faixa.setAlpha(190)
+        if self._alvo is not None:
+            p.fillRect(QRectF(0, r.height() - 3, r.width() * self._mostrado, 3), faixa)
+            return
+        pos = (t * 0.45) % 1.5 - 0.25
         ini = max(0.0, pos * r.width())
         fim = min(r.width(), pos * r.width() + r.width() * 0.25)
         if fim > ini:
-            faixa.setAlpha(190)
             p.fillRect(QRectF(ini, r.height() - 3, fim - ini, 3), faixa)

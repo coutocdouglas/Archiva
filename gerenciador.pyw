@@ -89,8 +89,9 @@ def _ligar_abertura(w, abertura):
 
     abertura.configurar(mostrar)
     abertura.reiniciar_relogio()                    # a montagem da janela principal não conta na animação
-    w.pronto.connect(abertura.terminar)
-    QTimer.singleShot(LIMITE_MS, abertura.terminar)  # leitura demorada: abre mesmo assim
+    w.etapa.connect(abertura.set_etapa)             # o rodapé diz o que está sendo feito
+    w.pronto.connect(abertura.terminar)             # biblioteca lida e conferida por inteiro
+    QTimer.singleShot(LIMITE_MS, abertura.terminar)  # segurança: se algo travar, abre mesmo assim
 
 
 if __name__ == "__main__":

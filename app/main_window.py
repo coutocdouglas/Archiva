@@ -44,7 +44,44 @@ COL_MISSING = QColor("#e05252")
 
 # =========================================================================== modelo da grade
 
+def paint_lock_overlay(p: QPainter, img: QRectF, radius: float = 12) -> None:
+    """Item em uso por outra pessoa: véu cinza translúcido com um cadeado branco no meio da prévia."""
+    p.save()
+    p.setRenderHint(QPainter.Antialiasing)
+    clip = QPainterPath()
+    clip.addRoundedRect(img, radius, radius)
+    p.setClipPath(clip)
+    veil = QColor(98, 98, 102, 158)
+    p.fillRect(img, veil)
+    s = min(img.width(), img.height()) * 0.30                  # largura do cadeado
+    cx, cy = img.center().x(), img.center().y()
+    body = QRectF(cx - s / 2, cy - s * 0.16, s, s * 0.72)
+    w = s * 0.52
+    top = body.top() - s * 0.36
+    shackle = QPainterPath()
+    shackle.moveTo(cx - w / 2, body.top() + 2)
+    shackle.lineTo(cx - w / 2, top + w / 2)
+    shackle.arcTo(QRectF(cx - w / 2, top, w, w), 180, -180)
+    shackle.lineTo(cx + w / 2, body.top() + 2)
+    white = QColor(255, 255, 255, 248)
+    shade = QColor(0, 0, 0, 70)
+    for dy, col in ((s * 0.03, shade), (0.0, white)):           # sombra leve por baixo, para destacar do fundo claro
+        p.setPen(QPen(col, s * 0.11, Qt.SolidLine, Qt.RoundCap))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(shackle.translated(0, dy))
+        p.setPen(Qt.NoPen)
+        p.setBrush(col)
+        p.drawRoundedRect(body.translated(0, dy), s * 0.14, s * 0.14)
+    p.setBrush(veil)                                            # furo da fechadura
+    ky = body.center().y() - s * 0.05
+    p.drawEllipse(QPointF(cx, ky), s * 0.07, s * 0.07)
+    p.drawRoundedRect(QRectF(cx - s * 0.03, ky, s * 0.06, s * 0.20), s * 0.03, s * 0.03)
+    p.restore()
+
+
 class AssetModel(QAbstractListModel):
+    lock_resolver = None      # a janela principal liga aqui o texto de "quem está usando" (dica do cartão)
+
     def __init__(self, db: TagDB):
         super().__init__()
         self.db = db
@@ -73,6 +110,9 @@ class AssetModel(QAbstractListModel):
             tip = f"<b>{a.name}</b><br>{a.category}<br>Tags: {tags}"
             if a.issues:
                 tip += "<br><span style='color:#e05252'>" + "<br>".join(a.issues) + "</span>"
+            who = AssetModel.lock_resolver(a.key) if AssetModel.lock_resolver else ""
+            if who:
+                tip += f"<br><b>Em uso:</b> {who}"
             return tip
         return None
 
@@ -117,6 +157,9 @@ class CardDelegate(QStyledItemDelegate):
         return theme.WARN, "extrair", busy, queued
 
     def subtitle_for(self, a: Asset, busy: bool, queued: bool) -> str:
+        lock = self.w.shared.lock_of(a.key)
+        if lock and not (busy or queued):
+            return f"em uso · {lock.get('nome', '?')}"
         if busy:
             return "extraindo…"
         if queued:
@@ -161,6 +204,9 @@ class CardDelegate(QStyledItemDelegate):
             p.setFont(theme.ui_font(9))
             p.drawText(img, Qt.AlignCenter, "sem prévia" if not a.preview else "…")
         p.restore()
+        in_use = self.w.shared.lock_of(a.key) if a.kind != "missing" else None
+        if in_use:                                       # outra pessoa está mexendo neste item: cadeado sobre a prévia
+            paint_lock_overlay(p, img, 12)
         if selected:
             theme.paint_selection(p, img, 12)
         elif hover:
@@ -184,8 +230,7 @@ class CardDelegate(QStyledItemDelegate):
             p.fillPath(pp, QColor(30, 20, 14, 205))
             p.setPen(QColor("#cdb7ff") if label == "organizar" else theme.LOGO)
             p.drawText(pill, Qt.AlignCenter, label)
-        lock = self.w.shared.lock_of(a.key) if not (busy or queued) else None
-        if busy or queued or lock:
+        if busy or queued:
             band = QRectF(img.left(), img.bottom() - 22, img.width(), 22)
             bp = QPainterPath()
             bp.addRoundedRect(band, 0, 0)
@@ -195,7 +240,7 @@ class CardDelegate(QStyledItemDelegate):
             p.restore()
             p.setPen(theme.TEXT)
             p.setFont(theme.ui_font(8.5))
-            txt = (f"em uso · {lock.get('nome', '?')}" if lock else ("extraindo…" if busy else "na fila"))
+            txt = "extraindo…" if busy else "na fila"
             p.drawText(band, Qt.AlignCenter, QFontMetrics(p.font()).elidedText(txt, Qt.ElideRight, int(band.width() - 10)))
 
         # nome + situação
@@ -981,7 +1026,8 @@ class CategoryDelegate(QStyledItemDelegate):
 # =========================================================================== janela principal
 
 class MainWindow(FramelessMixin, QMainWindow):
-    pronto = Signal()      # a leitura da biblioteca terminou (a tela de abertura espera por isto)
+    pronto = Signal()      # a biblioteca foi lida e conferida por inteiro (a tela de abertura espera por isto)
+    etapa = Signal(str, float)   # o que o programa está fazendo na abertura (texto, andamento de 0 a 1)
 
     def __init__(self):
         super().__init__()
@@ -1025,6 +1071,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._backup_timer.timeout.connect(self._clean_backup)
         self._backup_timer.start()
 
+        AssetModel.lock_resolver = self.lock_text          # dica do cartão: quem está usando o item
         self._build_ui()
         self.thumbs.changed.connect(self._on_thumbs_changed)
         self._thumb_timer = QTimer(self, singleShot=True, interval=60)
@@ -1157,8 +1204,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.count_label = QLabel()           # compatibilidade (texto vai para o subtítulo)
 
         # ---------------- direita: detalhes
-        right = SideColumn(border_left=True)
-        rl = QVBoxLayout(right)
+        right = self.right_col = SideColumn(border_left=True)
+        rl = self._right_layout = QVBoxLayout(right)
         rl.setContentsMargins(28, TITLE_H + 8, 28, 16)
         from PySide6.QtWidgets import QScrollArea
         self.details = DetailsPanel(self)
@@ -1445,11 +1492,14 @@ class MainWindow(FramelessMixin, QMainWindow):
         if getattr(self, "_scan", None) and self._scan.isRunning():
             return
         if self._bound_root != root:
+            self.etapa.emit("Lendo as tags e o histórico da equipe", 0.06)
             self._bind_library(root)
         if getattr(self, "_verify", None) and self._verify.isRunning():
             self._verify.requestInterruption()
             self._verify.wait(3000)
         self._index_file = indice.cache_file(self.cache_root, root)
+        if not full:
+            self.etapa.emit("Carregando a biblioteca salva", 0.2)
         cached = None if full else indice.load(self._index_file, root)
         if cached:
             # abre na hora com o índice salvo e confere em segundo plano só o que mudou
@@ -1461,14 +1511,17 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.progress.show()
         self.statusBar().showMessage(f"Lendo {root}…")
         self._scan = ScanThread(root)
+        self.etapa.emit("Lendo a biblioteca", 0.12)
         self._scan.progress.connect(lambda i, n, name: (self.progress.setRange(0, n), self.progress.setValue(i),
-                                                        self.statusBar().showMessage(f"Lendo {name}…  ({i}/{n})")))
+                                                        self.statusBar().showMessage(f"Lendo {name}…  ({i}/{n})"),
+                                                        self.etapa.emit(f"Lendo {pretty_category(name)}  ·  {i} de {n}",
+                                                                        0.12 + 0.68 * i / max(n, 1))))
         self._scan.done.connect(self._on_scanned)
         self._scan.failed.connect(self._scan_failed)
         self._scan.start()
 
     def _scan_failed(self, msg: str):
-        self.pronto.emit()
+        self.pronto.emit()     # sem leitura não há o que esperar: a janela aparece e mostra o erro
         QMessageBox.warning(self, "Erro ao ler biblioteca", msg)
 
     def _bind_library(self, root: str):
@@ -1597,6 +1650,10 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.details.refresh()
         if hasattr(self.entrada, "grid"):
             self.entrada.grid.viewport().update()
+        for page, name in ((getattr(self, "tags_page", None), "gallery"), (getattr(self, "colecoes", None), "grid")):
+            view = getattr(page, name, None)
+            if view is not None:
+                view.viewport().update()
 
     def lock_text(self, key: str) -> str:
         info = self.shared.lock_of(key)
@@ -1639,6 +1696,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         return self.shared.log_op(*a, **kw)
 
     def _start_verify(self, root: str):
+        self.etapa.emit("Conferindo o que mudou na biblioteca", 0.55)
         self.statusBar().showMessage("Conferindo mudanças na biblioteca…")
         self.progress.setRange(0, 0)
         self.progress.show()
@@ -1646,6 +1704,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         v.changed.connect(self._on_verify_changed)
         v.removed.connect(self._on_verify_removed)
         v.finished_ok.connect(self._on_verify_done)
+        v.stage.connect(lambda n: self.etapa.emit(f"Relendo {n} {'categoria que mudou' if n == 1 else 'categorias que mudaram'}",
+                                                  0.75))
         self._verify = v
         v.start()
 
@@ -1680,6 +1740,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         if n:
             self.entrada.fill_categories()
             self.home.refresh()
+        self.etapa.emit("Abrindo", 1.0)
+        self.pronto.emit()          # só agora a janela principal pode aparecer: tudo foi lido e conferido
 
     def _save_index(self):
         f = getattr(self, "_index_file", None)
@@ -1696,8 +1758,10 @@ class MainWindow(FramelessMixin, QMainWindow):
                 + (f"  ·  {n_issue} com problema" if n_issue else ""))
 
     def _on_scanned(self, cats: list[Category], from_index: bool = False):
+        self.etapa.emit("Montando a tela", 0.4 if from_index else 0.9)
         self.data_rev += 1
         self.progress.hide()
+        self._all_cats = cats          # antes de salvar o índice (senão ele guardava a lista velha ou nada)
         if not from_index:
             sigs = getattr(getattr(self, "_scan", None), "sigs", None)
             self._sigs = sigs if sigs is not None else indice.all_signatures(self.cfg["library_root"], cats)
@@ -1722,7 +1786,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             self._intro_done = True
             QTimer.singleShot(500, self._intro)
         self.schedule_dups(6000)
-        self.pronto.emit()
+        if not from_index:        # com o índice salvo ainda falta conferir o disco: o `pronto` vem de _on_verify_done
+            self.pronto.emit()
 
     # ----------------------------------------------------------------- tutoriais
     def _intro(self):
@@ -1903,6 +1968,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._fill_tag_filter()
         for a in self.details.assets:
             self.model.refresh_key(a.key)
+        if getattr(self, "_details_in_tags", False):        # mexeu nas tags pelo painel da galeria: a galeria acompanha
+            self.tags_page.refresh()
 
     # ----------------------------------------------------------------- seleção
     def selected_assets(self) -> list[Asset]:
@@ -1913,6 +1980,10 @@ class MainWindow(FramelessMixin, QMainWindow):
 
     # ----------------------------------------------------------------- arrastar
     def drag_path_for(self, a: Asset, max_file: str | None = None) -> str | None:
+        if self.shared.lock_of(a.key):
+            self.statusBar().showMessage(f"{a.name} está em uso: {self.lock_text(a.key)}. "
+                                         "Espere a pessoa terminar para arrastar.", 8000)
+            return None
         if a.kind == "missing":
             self.statusBar().showMessage(f"{a.name}: arquivo do modelo não encontrado.", 6000)
             return None
@@ -2326,8 +2397,32 @@ class MainWindow(FramelessMixin, QMainWindow):
     def _bump(self):
         self.data_rev += 1
 
+    def _dock_details(self, in_tags: bool):
+        """O painel de detalhes é um só: fica à direita da Biblioteca e vai para a galeria de uma tag quando as Tags
+        estão abertas (assim vale o mesmo painel, com as mesmas travas, histórico e desfazer)."""
+        if in_tags == getattr(self, "_details_in_tags", False):
+            return
+        self._details_in_tags = in_tags
+        col = self.right_col
+        if in_tags:
+            self._split_sizes = self.splitter.sizes()
+            self.tags_page.side_layout.addWidget(col)
+            self._right_layout.setContentsMargins(24, 0, 0, 0)
+            col.setFixedWidth(344)
+            col.show()
+            self.tags_page.sync_side()
+        else:
+            col.setMinimumWidth(280)
+            col.setMaximumWidth(16777215)
+            self._right_layout.setContentsMargins(28, TITLE_H + 8, 28, 16)
+            self.splitter.addWidget(col)
+            self.splitter.setSizes(getattr(self, "_split_sizes", None) or [230, 900, 340])
+            col.show()
+            self.details.set_assets(self.selected_assets())
+
     def _on_tab(self, i):
         self.sidebar.set_current(self.tabs.key_of(self.tabs.widget(i)))
+        self._dock_details(self.tabs.widget(i) is getattr(self, "tags_page", None))
         if self.tabs.widget(i) is self.entrada:
             self.entrada.refresh()
         elif self.tabs.widget(i) is self.home:

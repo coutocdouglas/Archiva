@@ -2,6 +2,13 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.5
+- **A janela principal só abre com a biblioteca toda carregada.** Antes, com o índice salvo, ela aparecia na hora e ainda ficava conferindo o disco por baixo. Agora a tela de abertura espera a leitura e a conferência terminarem, e o programa abre completo.
+- **A abertura mostra o que está fazendo:** "Lendo as tags e o histórico da equipe", "Lendo Poltronas · 4 de 41", "Conferindo o que mudou na biblioteca", "Montando a tela". A linha de baixo avança de verdade conforme as etapas. Só se algo travar por mais de 1 minuto o programa abre mesmo assim.
+- **Cadeado nos modelos em uso por outra pessoa:** um véu cinza com um cadeado branco aparece sobre a prévia (na Biblioteca, nas Tags, nas Coleções e na Entrada) enquanto outra pessoa extrai, organiza ou mexe no item. Quando ela termina, o cadeado some sozinho. Ao passar o mouse, a dica mostra quem está usando, em qual computador e desde que horas. Item em uso não pode ser arrastado para o Max.
+- **Painel de detalhes também nas Tags:** ao clicar num modelo dentro de uma tag, o painel da direita (prévia, extrair, tags, coleções, variações) aparece ali mesmo, sem precisar ir até o local do modelo na Biblioteca. Adicionar ou tirar tags pelo painel atualiza a galeria e mantém a seleção.
+- Corrigido: na primeira leitura da biblioteca (e no F5) o índice local não era salvo na hora, só ao fechar o programa; se o programa fechasse de forma inesperada, a próxima abertura leria tudo de novo (ou, no F5, usaria uma lista desatualizada).
+
 ## 1.2.4
 - **Organizar, Mover para… e Juntar pastas sem congelar:** os arquivos são movidos em segundo plano, com uma janela de andamento. Antes, a janela ficava parada com o cursor de espera até terminar (vários segundos com muitos itens). Travas, histórico e desfazer funcionam como antes.
 - Atualizar prévia e Comparar pasta e compactado também mostram andamento em vez de travar.

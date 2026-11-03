@@ -158,6 +158,9 @@ class GalleryDelegate(QStyledItemDelegate):
         r = QRectF(option.rect).adjusted(8, 8, -8, -8)
         img = QRectF(r.left(), r.top(), r.width(), r.width())
         draw_preview(p, self.page, a.preview, img, radius=12, zoom=1.035 if hover else 1.0)
+        if self.page.w.shared.lock_of(a.key):            # outra pessoa está usando este item
+            from .main_window import paint_lock_overlay
+            paint_lock_overlay(p, img, 12)
         if sel:
             theme.paint_selection(p, img, 12)
         elif hover:
@@ -271,7 +274,15 @@ class TagsPage(QWidget):
         lay.addLayout(top)
 
         self.stack = QStackedWidget()
-        lay.addWidget(self.stack, 1)
+        body = QHBoxLayout()
+        body.setSpacing(14)
+        body.addWidget(self.stack, 1)
+        # o painel de detalhes da Biblioteca se muda para cá quando a galeria de uma tag está aberta
+        self.side_host = QWidget()
+        self.side_layout = QVBoxLayout(self.side_host)
+        self.side_layout.setContentsMargins(0, 0, 0, 0)
+        body.addWidget(self.side_host)
+        lay.addLayout(body, 1)
 
         # pastas
         self.folders = QListWidget()
@@ -303,6 +314,7 @@ class TagsPage(QWidget):
         self.model = AssetModel(self.w.db)
         self.gallery = AssetView(self.w)
         self.gallery.setModel(self.model)
+        self.gallery.selectionModel().selectionChanged.connect(self._on_gallery_selection)
         self.gallery.setItemDelegate(GalleryDelegate(self))
         self.gallery.setSpacing(4)
         self.gallery.setStyleSheet("QListView{background:transparent; border:none;}")
@@ -398,8 +410,25 @@ class TagsPage(QWidget):
                 html.append(label)
         self.crumb.setText('<span style="color:#75695c;">  ›  </span>'.join(html))
 
+    def selected_assets(self) -> list[Asset]:
+        from .main_window import ASSET_ROLE
+        sm = self.gallery.selectionModel()
+        return [i.data(ASSET_ROLE) for i in sm.selectedIndexes()] if sm else []
+
+    def _on_gallery_selection(self, *_):
+        if getattr(self.w, "_details_in_tags", False):
+            self.w.details.set_assets(self.selected_assets())
+
+    def sync_side(self):
+        """Painel de detalhes à direita só com a galeria aberta; mostra o que está selecionado nela."""
+        gallery = self.stack.currentIndex() == 1
+        self.side_host.setVisible(gallery)
+        if getattr(self.w, "_details_in_tags", False):
+            self.w.details.set_assets(self.selected_assets() if gallery else [])
+
     def _set_mode(self, gallery: bool):
         self.stack.setCurrentIndex(1 if gallery else 0)
+        self.sync_side()
         for wdg in (self.find, self.sort, self.new_group):
             wdg.setVisible(not gallery)
         self.new_group.setVisible(not gallery and self.group is None)
@@ -408,6 +437,7 @@ class TagsPage(QWidget):
         self.back.setVisible(gallery or self.group is not None)
 
     def _show_folders(self):
+        self._shown_tag = None
         self._set_mode(False)
         db = self.w.db
         gmap = db.group_map()
@@ -488,14 +518,28 @@ class TagsPage(QWidget):
         t = self.tag
         items = sorted(self._tagged.get(t, []), key=self._mt, reverse=True)
         self.cover_keys = set(self.w.db.covers(t))
+        same = getattr(self, "_shown_tag", None) == t      # mesma tag recarregada: mantém seleção e posição
+        keep = {a.key for a in self.selected_assets()} if same else set()
+        bar = self.gallery.verticalScrollBar()
+        scroll = bar.value() if same else 0
+        self._shown_tag = t
         self.model.set_assets(items)
+        sm = self.gallery.selectionModel()
+        for k in keep:
+            r = self.model.row_of.get(k)
+            if r is not None:
+                sm.select(self.model.index(r), sm.SelectionFlag.Select)
+        self.sync_side()
         parts = [(self.group, "group")] if self.group else []
         self._crumbs(*parts, (t, "tag"))
         n = len(items)
         ready = sum(1 for a in items if a.kind in ("folder", "max"))
         self.sub.setText(f"{n} {'item' if n == 1 else 'itens'}  ·  {ready} "
                          f"{'pronto' if ready == 1 else 'prontos'} para usar")
-        self.gallery.scrollToTop()
+        if scroll:
+            QTimer.singleShot(0, lambda: bar.setValue(scroll))
+        else:
+            self.gallery.scrollToTop()
 
     def _open_item(self, it: QListWidgetItem):
         if it.data(KIND_ROLE) == "group":

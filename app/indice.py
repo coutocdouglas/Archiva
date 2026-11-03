@@ -82,12 +82,20 @@ class VerifyThread(QThread):
     changed = Signal(object, str)        # Category nova, assinatura
     removed = Signal(str)                # chave da categoria que sumiu
     finished_ok = Signal(int)            # quantas categorias mudaram
+    stage = Signal(int)                  # quantas categorias vão ser relidas (para a tela de abertura)
 
     def __init__(self, root: str, cats: list, sigs: dict):
         super().__init__()
         self.root, self.cats, self.sigs = root, {c.key: c for c in cats}, dict(sigs)
 
     def run(self):
+        try:
+            self._run()
+        except Exception:  # noqa: BLE001 — a conferência nunca pode deixar a abertura esperando para sempre
+            if not self.isInterruptionRequested():
+                self.finished_ok.emit(0)
+
+    def _run(self):
         n = 0
         try:
             current = list_categories(self.root)
@@ -108,6 +116,9 @@ class VerifyThread(QThread):
             return
 
         # 2) relê por inteiro só as que mudaram (também em paralelo)
+        if todo:
+            self.stage.emit(len(todo))
+
         def rescan(t):
             if self.isInterruptionRequested():
                 return None
