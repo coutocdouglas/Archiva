@@ -2,6 +2,14 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.6
+- **Nova barra de categorias na Biblioteca:**
+  - **Miniatura em cada pasta:** a prévia mais recente da categoria aparece num quadradinho ao lado do nome, com a quantidade de itens à direita. A linha "Todas as categorias" ganhou um ícone de grade.
+  - **Filtro no topo:** digite para achar uma categoria (sem diferenciar acento ou maiúscula). Se uma subpasta combina, a pasta de cima continua visível, e se a pasta combina, as subpastas aparecem. Esc limpa o filtro.
+  - **Subpastas que abrem e fecham:** só as pastas que têm subpastas (como Luminárias) ganham a setinha. Elas começam fechadas, abrem sozinhas quando você vai até uma subpasta, e o que você abriu ou fechou fica lembrado.
+  - A coluna ficou um pouco mais larga (mínimo de 256 px) para caber miniatura, nome e quantidade.
+- **Tags em chips:** no lugar da lista com caixinhas, cada tag é um botão arredondado com a quantidade dentro, que quebra de linha. Marcada, ganha contorno dourado e um visto. Aparecem as 10 tags mais usadas (mais as que estiverem marcadas); "ver todas…" abre a lista completa, com busca. O filtro funciona como antes: o item precisa ter todas as tags marcadas.
+
 ## 1.2.5
 - **A janela principal só abre com a biblioteca toda carregada.** Antes, com o índice salvo, ela aparecia na hora e ainda ficava conferindo o disco por baixo. Agora a tela de abertura espera a leitura e a conferência terminarem, e o programa abre completo.
 - **A abertura mostra o que está fazendo:** "Lendo as tags e o histórico da equipe", "Lendo Poltronas · 4 de 41", "Conferindo o que mudou na biblioteca", "Montando a tela". A linha de baixo avança de verdade conforme as etapas. Só se algo travar por mais de 1 minuto o programa abre mesmo assim.

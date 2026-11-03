@@ -29,6 +29,8 @@ from .database import TagDB, clean_tag
 from . import scanner as scanner_mod
 from .scanner import Asset, Category, normalize, scan_category
 from . import theme, ui
+from .barra_categorias import (COUNT_ROLE, COVER_ROLE, AllTagsDialog, CategoryDelegate, CategoryTree, TagChips,
+                               cover_of)
 from .janela import TITLE_H, CaptionButtons, FramelessMixin
 from . import segundo_plano
 from .workers import ExtractionManager, ScanThread, ThumbnailCache
@@ -986,43 +988,6 @@ class SideColumn(QWidget):
         p.drawLine(QPointF(x, 0), QPointF(x, r.bottom()))
 
 
-COUNT_ROLE = Qt.UserRole + 5
-
-
-class CategoryDelegate(QStyledItemDelegate):
-    """Linha de categoria: nome à esquerda, quantidade à direita; selecionada em vidro."""
-
-    def sizeHint(self, option, index):
-        return QSize(100, 34)
-
-    def paint(self, p: QPainter, option, index):
-        p.save()
-        p.setRenderHint(QPainter.Antialiasing)
-        r = QRectF(option.rect).adjusted(0, 1, -2, -1)
-        sel = bool(option.state & QStyle.State_Selected)
-        hover = bool(option.state & QStyle.State_MouseOver)
-        if sel:
-            theme.paint_glass(p, r, 8, 1.6)
-        elif hover:
-            path = QPainterPath()
-            path.addRoundedRect(r, 8, 8)
-            p.fillPath(path, QColor(255, 230, 200, 12))
-        name = index.data(Qt.DisplayRole) or ""
-        count = index.data(COUNT_ROLE)
-        f = theme.ui_font(10)
-        p.setFont(f)
-        fm = QFontMetrics(f)
-        cw = fm.horizontalAdvance(str(count)) + 14 if count is not None else 0
-        p.setPen(QColor("#fff6e8") if sel else (theme.TEXT if hover else QColor("#cbbfae")))
-        p.drawText(r.adjusted(12, 0, -cw - 6, 0), Qt.AlignVCenter | Qt.AlignLeft,
-                   fm.elidedText(name, Qt.ElideRight, int(r.width() - cw - 18)))
-        if count is not None:
-            p.setFont(theme.ui_font(9))
-            p.setPen(theme.HILITE if sel else theme.FAINT)
-            p.drawText(r.adjusted(0, 0, -12, 0), Qt.AlignVCenter | Qt.AlignRight, f"{count:,}".replace(",", "."))
-        p.restore()
-
-
 # =========================================================================== janela principal
 
 class MainWindow(FramelessMixin, QMainWindow):
@@ -1111,21 +1076,43 @@ class MainWindow(FramelessMixin, QMainWindow):
         ll = QVBoxLayout(left)
         ll.setContentsMargins(14, TITLE_H + 8, 14, 16)
         ll.setSpacing(6)
-        h = ui.heading("Categorias", 10)
-        h.setContentsMargins(12, 0, 0, 6)
-        ll.addWidget(h)
-        self.cat_tree = QTreeWidget()
+        hh = QHBoxLayout()
+        hh.setContentsMargins(12, 0, 8, 0)
+        hh.addWidget(ui.heading("Categorias", 10))
+        hh.addStretch(1)
+        self.cat_count = QLabel()
+        self.cat_count.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
+        hh.addWidget(self.cat_count)
+        ll.addLayout(hh)
+        self.cat_search_box = ui.SearchField("Filtrar categorias", height=36)
+        self.cat_search = self.cat_search_box.edit
+        self.cat_search.setStyleSheet("QLineEdit{background:transparent; border:none; padding:0; font-size:10pt;}")
+        self.cat_search.setToolTip("Digite para achar uma categoria (Esc limpa)")
+        self.cat_search.textChanged.connect(self._filter_categories)
+        from PySide6.QtGui import QShortcut
+        QShortcut(QKeySequence(Qt.Key_Escape), self.cat_search, context=Qt.WidgetShortcut,
+                  activated=self.cat_search.clear)
+        ll.addWidget(self.cat_search_box)
+        ll.addSpacing(4)
+        self._cat_guard = False            # enquanto true, abrir/fechar pasta não é gravado como escolha da pessoa
+        self.cat_tree = CategoryTree()
         self.cat_tree.setHeaderHidden(True)
         self.cat_tree.setIndentation(14)
         self.cat_tree.setRootIsDecorated(False)
-        self.cat_tree.setItemDelegate(CategoryDelegate(self.cat_tree))
+        self.cat_tree.setItemDelegate(CategoryDelegate(self, self.cat_tree))
         self.cat_tree.setMouseTracking(True)
         self.cat_tree.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.cat_tree.currentItemChanged.connect(self._on_category)
+        self.cat_tree.itemExpanded.connect(self._on_cat_expanded)
+        self.cat_tree.itemCollapsed.connect(self._on_cat_expanded)
         self.cat_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.cat_tree.customContextMenuRequested.connect(self._category_menu)
         self.cat_tree.setToolTip("Botão direito numa categoria: extrair ou organizar tudo dela")
-        ll.addWidget(self.cat_tree, 3)
+        ll.addWidget(self.cat_tree, 1)
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background:rgba(255,230,200,0.07); border:none;")
+        ll.addWidget(sep)
         hl = QHBoxLayout()
         hl.setContentsMargins(12, 10, 4, 2)
         hl.addWidget(ui.heading("Tags", 10))
@@ -1134,15 +1121,13 @@ class MainWindow(FramelessMixin, QMainWindow):
         hl.addStretch(1)
         hl.addWidget(self.clear_tags_btn)
         ll.addLayout(hl)
-        self.tag_filter = QListWidget()
-        self.tag_filter.itemChanged.connect(self._on_tag_filter)
-        self.tag_filter.setToolTip("Marque tags para filtrar (todas as marcadas precisam estar no item)")
-        self.tag_filter.setStyleSheet("QListWidget::item{padding:5px 8px; color:#a89c8c; border-radius:7px;}"
-                                      "QListWidget::item:hover{background:rgba(255,230,200,0.06); color:#f1e9dc;}"
-                                      "QListWidget::indicator{width:14px; height:14px; border-radius:4px;"
-                                      " border:1px solid rgba(255,230,200,0.28); background:rgba(255,236,210,0.04);}"
-                                      "QListWidget::indicator:checked{background:#e3cfa9; border-color:#e3cfa9;}")
-        ll.addWidget(self.tag_filter, 2)
+        self.tag_chips = TagChips()
+        self.tag_chips.toggled.connect(self._on_chip_toggled)
+        self.tag_chips.show_all.connect(self._show_all_tags)
+        chips_row = QHBoxLayout()
+        chips_row.setContentsMargins(8, 0, 4, 0)
+        chips_row.addWidget(self.tag_chips)
+        ll.addLayout(chips_row)
 
         # ---------------- centro: título, busca, filtro e grade
         center = QWidget()
@@ -1226,8 +1211,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.splitter.addWidget(center)
         self.splitter.addWidget(right)
         self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes([230, 900, 340])
-        left.setMinimumWidth(190)
+        self.splitter.setSizes([284, 900, 340])
+        left.setMinimumWidth(256)      # cabe miniatura + nome + contagem + setinha
 
         # ---------------- páginas
         from .entrada_page import EntradaPage
@@ -1857,13 +1842,93 @@ class MainWindow(FramelessMixin, QMainWindow):
             a.search_text = normalize(" ".join([a.name, a.category, *tags]))
             a._search_sig = sig
 
+    def _cat_items(self) -> list[QTreeWidgetItem]:
+        # sem QTreeWidgetItemIterator: no PySide6 ele deixava a árvore instável
+        out, stack = [], [self.cat_tree.topLevelItem(i) for i in range(self.cat_tree.topLevelItemCount())]
+        while stack:
+            it = stack.pop(0)
+            out.append(it)
+            stack[:0] = [it.child(i) for i in range(it.childCount())]
+        return out
+
+    def _opened_keys(self) -> set[str]:
+        return set((self.cfg["categorias_abertas"] or {}).get(self.cfg["library_root"] or "", []))
+
+    def _on_cat_expanded(self, _item=None):
+        """A pessoa abriu ou fechou uma pasta: guarda (por biblioteca) para a próxima vez."""
+        if self._cat_guard:
+            return
+        keys = [it.data(0, Qt.UserRole) for it in self._cat_items() if it.childCount() and it.isExpanded()]
+        d = dict(self.cfg["categorias_abertas"] or {})
+        d[self.cfg["library_root"] or ""] = keys
+        self.cfg["categorias_abertas"] = d
+
+    def _reveal_cat_item(self, item):
+        """Abre (sem gravar) as pastas de cima para a categoria escolhida aparecer."""
+        self._cat_guard = True
+        try:
+            p = item.parent() if item is not None else None
+            while p is not None:
+                p.setExpanded(True)
+                p = p.parent()
+        finally:
+            self._cat_guard = False
+
+    def _apply_saved_expansion(self):
+        opened = self._opened_keys()
+        cur = self.cat_tree.currentItem()
+        self._cat_guard = True
+        try:
+            for it in self._cat_items():
+                if it.childCount():
+                    it.setExpanded(it.data(0, Qt.UserRole) in opened)
+            self._reveal_cat_item(cur)
+        finally:
+            self._cat_guard = False
+
+    def _filter_categories(self, _text: str = ""):
+        toks = normalize(self.cat_search.text()).split()
+        self._cat_guard = True
+        try:
+            if not toks:
+                for it in self._cat_items():
+                    it.setHidden(False)
+                self._apply_saved_expansion()
+                return
+
+            def walk(it, up_match: bool) -> bool:
+                name = normalize(it.text(0))
+                match = all(t in name for t in toks)
+                any_kid = False
+                for i in range(it.childCount()):
+                    any_kid |= walk(it.child(i), match or up_match)
+                show = match or up_match or any_kid
+                it.setHidden(not show)
+                if it.childCount():
+                    it.setExpanded(show and (any_kid or match))
+                return show
+
+            for i in range(self.cat_tree.topLevelItemCount()):
+                top = self.cat_tree.topLevelItem(i)
+                if top.data(0, Qt.UserRole) == ALL_KEY:
+                    top.setHidden(True)
+                else:
+                    walk(top, False)
+        finally:
+            self._cat_guard = False
+
+    def _category_cover(self, c: Category) -> str:
+        return cover_of(c)
+
     def _fill_category_tree(self):
         prev = self.current_cat
         self.cat_tree.blockSignals(True)
+        self._cat_guard = True
         self.cat_tree.clear()
-        top = QTreeWidgetItem(["Todas"])
+        top = QTreeWidgetItem(["Todas as categorias"])
         top.setData(0, Qt.UserRole, ALL_KEY)
         top.setData(0, COUNT_ROLE, len(self.all_assets))
+        top.setData(0, COVER_ROLE, "*")
         self.cat_tree.addTopLevelItem(top)
         select = top
 
@@ -1872,6 +1937,8 @@ class MainWindow(FramelessMixin, QMainWindow):
             it = QTreeWidgetItem([pretty(c.name)])
             it.setData(0, Qt.UserRole, c.key)
             it.setData(0, COUNT_ROLE, len(c.all_assets()))
+            if not isinstance(parent, QTreeWidgetItem):
+                it.setData(0, COVER_ROLE, self._category_cover(c))     # miniatura só nas categorias de cima
             parent.addChild(it) if isinstance(parent, QTreeWidgetItem) else self.cat_tree.addTopLevelItem(it)
             if c.key == prev:
                 select = it
@@ -1880,23 +1947,27 @@ class MainWindow(FramelessMixin, QMainWindow):
 
         for c in self.categories:
             add(self.cat_tree, c)
-        self.cat_tree.expandAll()
         self.cat_tree.setCurrentItem(select)
         self.cat_tree.blockSignals(False)
         self.current_cat = select.data(0, Qt.UserRole)
+        self.cat_count.setText(f"{len(self.categories)} pastas")
+        self._cat_guard = False
+        self._apply_saved_expansion()
+        if self.cat_search.text():
+            self._filter_categories()
 
     def _fill_tag_filter(self):
-        self.tag_filter.blockSignals(True)
-        self.tag_filter.clear()
         tags = self.db.all_tags()
-        for t, n in tags:
-            it = QListWidgetItem(f"{t}  ({n})")
-            it.setData(Qt.UserRole, t)
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-            it.setCheckState(Qt.Checked if t in self.active_tags else Qt.Unchecked)
-            self.tag_filter.addItem(it)
         self.active_tags &= {t for t, _ in tags}
-        self.tag_filter.blockSignals(False)
+        self.tag_chips.set_tags(tags, self.active_tags)
+
+    def _on_chip_toggled(self, tag: str, on: bool):
+        (self.active_tags.add if on else self.active_tags.discard)(tag)
+        self.apply_filter()
+
+    def _show_all_tags(self):
+        AllTagsDialog(self).exec()
+        self._fill_tag_filter()
 
     # ----------------------------------------------------------------- filtro
     def apply_filter(self):
@@ -2416,7 +2487,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             col.setMaximumWidth(16777215)
             self._right_layout.setContentsMargins(28, TITLE_H + 8, 28, 16)
             self.splitter.addWidget(col)
-            self.splitter.setSizes(getattr(self, "_split_sizes", None) or [230, 900, 340])
+            self.splitter.setSizes(getattr(self, "_split_sizes", None) or [284, 900, 340])
             col.show()
             self.details.set_assets(self.selected_assets())
 
@@ -2461,7 +2532,10 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.show_filter.setCurrentIndex(i if i >= 0 else 0)
         self.show_filter.blockSignals(False)
         self.cfg.values["show_filter"] = self.show_filter.currentData()
+        if self.cat_search.text():
+            self.cat_search.clear()          # o filtro de categorias esconderia o destino
         item = self._tree_item(cat_key or ALL_KEY)
+        self._reveal_cat_item(item)
         self.tabs.setCurrentWidget(self.splitter)
         if item is not None and item is not self.cat_tree.currentItem():
             self.cat_tree.setCurrentItem(item)   # dispara apply_filter
@@ -2696,6 +2770,7 @@ class MainWindow(FramelessMixin, QMainWindow):
 
     def _repaint_thumbs(self):
         self.grid.viewport().update()
+        self.cat_tree.viewport().update()
         if len(self.details.assets) == 1:
             self.details.refresh()
 
