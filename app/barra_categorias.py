@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QAbstractButton, QDialog, QLayout, QLineEdit, QListWidget, QListWidgetItem, QStyle,
                                QStyledItemDelegate, QTreeWidget, QVBoxLayout, QWidget)
 
@@ -17,9 +17,12 @@ from .scanner import normalize
 
 COUNT_ROLE = Qt.UserRole + 5      # quantidade de itens da categoria
 COVER_ROLE = Qt.UserRole + 6      # caminho da prévia mais recente ("*" = ícone de grade, da linha "Todas")
+HEADER_ROLE = Qt.UserRole + 7     # texto de um título de seção ("Fixadas", "Lista completa"); a linha não é selecionável
+PIN_ROLE = Qt.UserRole + 8        # True nas cópias da seção "Fixadas"
 
 ROW_TOP = 40                      # categoria de cima (com miniatura)
 ROW_SUB = 34                      # subpasta
+ROW_HEAD = 26                     # título de seção
 THUMB = 32
 CHIP_MAX_SHOWN = 10               # tags mais usadas mostradas como chips (as marcadas aparecem sempre)
 
@@ -51,7 +54,28 @@ class CategoryDelegate(QStyledItemDelegate):
         return QRect(rect.right() - CategoryDelegate.CHEVRON_W, rect.top(), CategoryDelegate.CHEVRON_W, rect.height())
 
     def sizeHint(self, option, index):
+        if index.data(HEADER_ROLE):
+            return QSize(100, ROW_HEAD)
         return QSize(100, ROW_SUB if index.parent().isValid() else ROW_TOP)
+
+    def _paint_header(self, p: QPainter, option, text: str) -> None:
+        r = QRectF(option.rect)
+        x = r.left() + 10
+        if text == "Fixadas":                                      # alfinete
+            c = QPointF(x + 5, r.center().y() + 1)
+            p.setPen(QPen(theme.LINK, 1.6, Qt.SolidLine, Qt.RoundCap))
+            p.setBrush(Qt.NoBrush)
+            p.drawLine(QPointF(c.x() + 3, c.y() - 5), QPointF(c.x() - 3, c.y() + 1))
+            p.drawLine(QPointF(c.x() - 1, c.y() - 7), QPointF(c.x() + 5, c.y() - 1))
+            p.drawLine(QPointF(c.x() - 3, c.y() + 1), QPointF(c.x() - 5, c.y() + 6))
+            x += 18
+        f = theme.ui_font(8.5)
+        f.setBold(True)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 0.8)
+        p.setFont(f)
+        p.setPen(theme.MUTED)
+        p.drawText(QRectF(x, r.top() + 4, r.right() - x, r.height() - 4), Qt.AlignVCenter | Qt.AlignLeft,
+                   text.upper())
 
     def _thumb(self, p: QPainter, box: QRectF, path: str | None) -> None:
         clip = QPainterPath()
@@ -92,6 +116,11 @@ class CategoryDelegate(QStyledItemDelegate):
         p.save()
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
+        head = index.data(HEADER_ROLE)
+        if head:
+            self._paint_header(p, option, head)
+            p.restore()
+            return
         r = QRectF(option.rect).adjusted(0, 1, -2, -1)
         sub = index.parent().isValid()
         sel = bool(option.state & QStyle.State_Selected)

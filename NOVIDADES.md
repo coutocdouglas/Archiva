@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.7
+- **Categorias fixadas no topo:** clique com o botão direito numa categoria (ou subpasta) e escolha "Fixar no topo". Ela ganha um atalho na seção "Fixadas", logo abaixo de "Todas as categorias", na ordem em que você fixou, e continua também na lista completa. Para tirar, botão direito e "Desafixar do topo". Subpasta fixada mostra o caminho (ex.: Luminárias › Pendente).
+- **É só seu:** as fixadas ficam guardadas neste computador, por biblioteca, e não aparecem para o resto da equipe. Se você esconder uma pasta em "Pastas visíveis", ela some da seção, mas a escolha é lembrada para quando voltar a mostrar.
+- Enquanto você digita no filtro de categorias, a seção "Fixadas" fica escondida para a busca mostrar só a lista completa.
+
 ## 1.2.6
 - **Nova barra de categorias na Biblioteca:**
   - **Miniatura em cada pasta:** a prévia mais recente da categoria aparece num quadradinho ao lado do nome, com a quantidade de itens à direita. A linha "Todas as categorias" ganhou um ícone de grade.

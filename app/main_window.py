@@ -29,7 +29,7 @@ from .database import TagDB, clean_tag
 from . import scanner as scanner_mod
 from .scanner import Asset, Category, normalize, scan_category
 from . import theme, ui
-from .barra_categorias import (COUNT_ROLE, COVER_ROLE, AllTagsDialog, CategoryDelegate, CategoryTree, TagChips,
+from .barra_categorias import (COUNT_ROLE, COVER_ROLE, HEADER_ROLE, PIN_ROLE, AllTagsDialog, CategoryDelegate, CategoryTree, TagChips,
                                cover_of)
 from .janela import TITLE_H, CaptionButtons, FramelessMixin
 from . import segundo_plano
@@ -1107,7 +1107,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.cat_tree.itemCollapsed.connect(self._on_cat_expanded)
         self.cat_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.cat_tree.customContextMenuRequested.connect(self._category_menu)
-        self.cat_tree.setToolTip("Botão direito numa categoria: extrair ou organizar tudo dela")
+        self.cat_tree.setToolTip("Botão direito numa categoria: fixar no topo, extrair ou organizar tudo dela")
         ll.addWidget(self.cat_tree, 1)
         sep = QFrame()
         sep.setFixedHeight(1)
@@ -1910,7 +1910,7 @@ class MainWindow(FramelessMixin, QMainWindow):
 
             for i in range(self.cat_tree.topLevelItemCount()):
                 top = self.cat_tree.topLevelItem(i)
-                if top.data(0, Qt.UserRole) == ALL_KEY:
+                if top.data(0, Qt.UserRole) == ALL_KEY or top.data(0, HEADER_ROLE) or top.data(0, PIN_ROLE):
                     top.setHidden(True)
                 else:
                     walk(top, False)
@@ -1921,6 +1921,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         return cover_of(c)
 
     def _fill_category_tree(self):
+        cur0 = self.cat_tree.currentItem()
+        was_pinned = bool(cur0 is not None and cur0.data(0, PIN_ROLE))
         prev = self.current_cat
         self.cat_tree.blockSignals(True)
         self._cat_guard = True
@@ -1932,6 +1934,27 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.cat_tree.addTopLevelItem(top)
         select = top
 
+        def header(text):
+            h = QTreeWidgetItem([""])
+            h.setData(0, HEADER_ROLE, text)
+            h.setFlags(Qt.ItemIsEnabled)                              # não se seleciona
+            self.cat_tree.addTopLevelItem(h)
+
+        pins = [self.cat_by_key[k] for k in self.pinned_keys() if k in self.cat_by_key]
+        if pins:
+            header("Fixadas")
+            for c in pins:
+                it = QTreeWidgetItem([self._pin_label(c)])
+                it.setData(0, Qt.UserRole, c.key)
+                it.setData(0, PIN_ROLE, True)
+                it.setData(0, COUNT_ROLE, len(c.all_assets()))
+                it.setData(0, COVER_ROLE, self._category_cover(c))
+                it.setToolTip(0, "Fixada no topo. Botão direito para desafixar.")
+                self.cat_tree.addTopLevelItem(it)
+                if was_pinned and c.key == prev:
+                    select = it
+            header("Lista completa")
+
         def add(parent, c: Category):
             nonlocal select
             it = QTreeWidgetItem([pretty(c.name)])
@@ -1940,7 +1963,7 @@ class MainWindow(FramelessMixin, QMainWindow):
             if not isinstance(parent, QTreeWidgetItem):
                 it.setData(0, COVER_ROLE, self._category_cover(c))     # miniatura só nas categorias de cima
             parent.addChild(it) if isinstance(parent, QTreeWidgetItem) else self.cat_tree.addTopLevelItem(it)
-            if c.key == prev:
+            if c.key == prev and not (was_pinned and select.data(0, PIN_ROLE)):
                 select = it
             for ch in c.children:
                 add(it, ch)
@@ -1955,6 +1978,30 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._apply_saved_expansion()
         if self.cat_search.text():
             self._filter_categories()
+
+    # ----------------------------------------------------------------- categorias fixadas (por pessoa)
+    def _pin_root(self) -> str:
+        return os.path.normcase(os.path.normpath(self.cfg["library_root"] or ""))
+
+    def pinned_keys(self) -> list[str]:
+        return list((self.cfg["categorias_fixadas"] or {}).get(self._pin_root(), []))
+
+    def _pin_label(self, c: Category) -> str:
+        """Subpasta fixada mostra a pasta de cima (ex.: Luminárias › Pendente) para não confundir."""
+        if "/" in c.key:
+            return " › ".join(pretty(x) for x in c.key.split("/"))
+        return pretty(c.name)
+
+    def toggle_pin(self, key: str) -> None:
+        keys = self.pinned_keys()
+        if key in keys:
+            keys.remove(key)
+        else:
+            keys.append(key)
+        d = dict(self.cfg["categorias_fixadas"] or {})
+        d[self._pin_root()] = keys
+        self.cfg["categorias_fixadas"] = d
+        self._fill_category_tree()
 
     def _fill_tag_filter(self):
         tags = self.db.all_tags()
@@ -2013,7 +2060,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.lib_sub.setText(txt)
 
     def _on_category(self, cur, _prev):
-        if cur:
+        if cur and not cur.data(0, HEADER_ROLE):
             self.current_cat = cur.data(0, Qt.UserRole)
             self.apply_filter()
             self.grid.scrollToTop()
@@ -2512,7 +2559,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         stack = [self.cat_tree.topLevelItem(i) for i in range(self.cat_tree.topLevelItemCount())]
         while stack:
             item = stack.pop(0)
-            if item.data(0, Qt.UserRole) == key:
+            if item.data(0, Qt.UserRole) == key and not item.data(0, PIN_ROLE):
                 return item
             stack[:0] = [item.child(i) for i in range(item.childCount())]
         return None
@@ -2741,6 +2788,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         if not it:
             return
         key = it.data(0, Qt.UserRole)
+        if not key or it.data(0, HEADER_ROLE):
+            return
         pool = self.all_assets if key == ALL_KEY else (self.cat_by_key[key].all_assets() if key in self.cat_by_key else [])
         archives = [a for a in pool if a.kind == "archive"]
         m = QMenu(self)
@@ -2750,6 +2799,9 @@ class MainWindow(FramelessMixin, QMainWindow):
         act2 = m.addAction(f"Organizar pastas fora do padrão ({len(messy)})", lambda: self.request_organize(messy))
         act2.setEnabled(bool(messy))
         if key != ALL_KEY and key in self.cat_by_key:
+            m.addSeparator()
+            m.addAction("Desafixar do topo" if key in self.pinned_keys() else "Fixar no topo",
+                        lambda: self.toggle_pin(key))
             m.addAction("Abrir pasta da categoria",
                         lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.cat_by_key[key].path)))
         m.exec(self.cat_tree.viewport().mapToGlobal(pos))

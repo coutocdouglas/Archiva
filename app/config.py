@@ -63,6 +63,7 @@ DEFAULTS = {
     "skip_version": "",           # versão que o usuário mandou ignorar
     "pastas_ocultas": {},         # por biblioteca: categorias que esta pessoa escondeu
     "categorias_abertas": {},     # por biblioteca: categorias com subpastas que esta pessoa deixou abertas
+    "categorias_fixadas": {},     # por biblioteca: categorias que esta pessoa fixou no topo (só dela, não é da equipe)
     "tutorial_off": False,        # boas-vindas ao abrir desligadas
     "abertura_off": False,        # tela de abertura (logo animada) desligada
     "tutoriais_vistos": [],
