@@ -651,7 +651,8 @@ class DetailsPanel(QWidget):
             return
         if len(a_list) == 1:
             a = a_list[0]
-            registro.marca(f"painel de detalhes: prévia de {a.key}")
+            registro.marca(f"painel de detalhes: prévia de {a.key} ({len(a.max_files)} .max, "
+                           f"{len(self.w.db.tags_of(a.key))} tags, {len(self.w.db.collections_of(a.key))} coleções)")
             pix = self.w.thumbs.get(a.preview)
             self.preview.set_pixmap(pix, "sem prévia" if not a.preview else "")
             self.preview.set_source(a.preview, a.name)
@@ -1249,8 +1250,28 @@ class MainWindow(FramelessMixin, QMainWindow):
         dscroll.setWidgetResizable(True)
         dscroll.setFrameShape(QFrame.NoFrame)
         dscroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Barra sempre presente: a largura útil do painel não muda quando ela "aparece" ou "some". Com a barra
+        # automática, textos que quebram linha podiam entrar num laço de layout (recursão no Qt) e derrubar o programa.
+        dscroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         dscroll.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget {background:transparent;}")
         dscroll.setWidget(self.details)
+        self._dscroll = dscroll
+        sb = dscroll.verticalScrollBar()
+
+        sb_estado = {"vazia": None}
+
+        def _sb_sync():          # sem o que rolar, o fio da barra some (theme: QScrollBar[vazia="true"])
+            vazia = sb.maximum() <= sb.minimum()
+            if sb_estado["vazia"] != vazia:
+                sb_estado["vazia"] = vazia
+                sb.setProperty("vazia", vazia)
+                sb.style().unpolish(sb)
+                sb.style().polish(sb)
+                sb.update()
+        sb_timer = QTimer(self)  # confere de vez em quando, fora do layout (barato: duas leituras)
+        sb_timer.setInterval(200)
+        sb_timer.timeout.connect(_sb_sync)
+        sb_timer.start()
         rl.addWidget(dscroll)
         right.setMinimumWidth(280)
 
@@ -2150,6 +2171,22 @@ class MainWindow(FramelessMixin, QMainWindow):
             registro.marca(f"selecionou {a.key} (tipo {a.kind}, prévia {a.preview or 'nenhuma'}, "
                            f"{a.preview_size} bytes, {len(a.max_files)} .max)" + (f" e mais {len(sel) - 1}" if len(sel) > 1 else ""))
         self.details.set_assets(sel)
+        if sel:
+            k = sel[0].key
+            registro.marca(f"painel de detalhes pronto: {k} | {self._estado_painel()}")
+            QTimer.singleShot(0, lambda: registro.marca(f"layout do painel concluído (laço de eventos): {k}"))
+            QTimer.singleShot(400, lambda: registro.marca(f"painel estável 400 ms depois: {k} | {self._estado_painel()}"))
+
+    def _estado_painel(self) -> str:
+        try:
+            d, sb = self._dscroll, self._dscroll.verticalScrollBar()
+            vp = d.viewport()
+            d_ = self.details
+            return (f"área {vp.width()}x{vp.height()}, conteúdo {d_.width()}x{d_.height()}, "
+                    f"rolagem {sb.minimum()}-{sb.maximum()}, {d_.tag_list.count()} tags, "
+                    f"{d_.files.count()} variações")
+        except Exception:  # noqa: BLE001
+            return "?"
 
     # ----------------------------------------------------------------- arrastar
     def drag_path_for(self, a: Asset, max_file: str | None = None) -> str | None:

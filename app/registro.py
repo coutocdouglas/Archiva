@@ -17,6 +17,7 @@ Nada daqui mexe na biblioteca de modelos.
 from __future__ import annotations
 
 import faulthandler
+from collections import deque
 import json
 import os
 import platform
@@ -36,6 +37,7 @@ MAX_AVISOS_QT = 150          # avisos do Qt por sessão (evita encher o arquivo)
 _lock = threading.RLock()
 _fh = None                   # arquivo aberto durante toda a sessão (o faulthandler escreve direto nele)
 _ultima = ""                 # última ação marcada
+_recentes: deque = deque(maxlen=8)   # as últimas ações, com a hora
 _avisos = 0
 _ultimo_aviso = ""
 _inicio = 0.0
@@ -70,7 +72,7 @@ def escrever(texto: str) -> None:
 def _gravar_estado(limpa: bool) -> None:
     try:
         dados = {"limpa": limpa, "versao": version(), "inicio": _inicio, "ultima": _ultima,
-                 "ultima_t": _agora()}
+                 "ultima_t": _agora(), "recentes": list(_recentes)}
         tmp = _estado_path().with_suffix(".tmp")
         tmp.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, _estado_path())
@@ -82,6 +84,7 @@ def marca(texto: str) -> None:
     """Anota a última ação (ex.: "selecionou POLTRONAS/POLTRONA 12"). Se o programa cair, ela aparece no registro."""
     global _ultima
     _ultima = texto
+    _recentes.append(f"{datetime.now():%H:%M:%S} {texto}")
     _gravar_estado(False)
 
 
@@ -177,6 +180,8 @@ def iniciar() -> None:
         escrever(f"QUEDA DETECTADA: a sessão anterior (versão {anterior.get('versao', '?')}, aberta em {ini}) "
                  f"terminou sem fechar normalmente (falha, programa encerrado à força ou PC desligado). "
                  f"Última ação anotada às {anterior.get('ultima_t', '?')}: {anterior.get('ultima') or '(nenhuma)'}")
+        for linha in anterior.get("recentes", []):
+            escrever(f"   ações antes da queda: {linha}")
     _ultima = ""
     _gravar_estado(False)
     try:

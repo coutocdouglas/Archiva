@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.9
+- **Possível correção da queda ao clicar em certos modelos:** o registro da 1.2.8 mostrou um "stack overflow" (recursão infinita) do Qt logo depois de montar o painel de detalhes. A causa mais provável é a barra de rolagem do painel, que aparecia e sumia em ciclo com textos que quebram linha. Agora a barra fica sempre presente (o fio some quando não há o que rolar), o que impede esse ciclo. **Ainda não confirmado no Windows.**
+- **Registro mais detalhado:** além da última ação, ele guarda as 8 últimas (com a hora) e, ao montar o painel de um modelo, anota quantas tags, coleções e variações ele tem e o tamanho do painel. Se ainda cair, o registro mostra se foi durante a montagem ou depois, no layout.
+
 ## 1.2.8
 - **Registro de falhas (Configurações › Diagnóstico):** se o programa fechar sozinho, sem mensagem, agora ele deixa um registro do que aconteceu. Ele guarda a falha interna do Qt (com o que o programa estava fazendo), erros do Python, avisos do Qt e a **última ação** antes da queda, como o modelo que foi clicado e o estado da prévia dele. Na abertura seguinte, o registro avisa "QUEDA DETECTADA" e mostra essa última ação.
 - **Como usar:** em Configurações › Diagnóstico, **Salvar registro…** copia o arquivo para a pasta que você escolher (padrão: Downloads), pronto para enviar. **Abrir pasta** mostra onde ele fica e **Limpar** zera o registro. O arquivo é `registro.log`, em %APPDATA%\GerenciadorAssets3D, e não passa de cerca de 1 MB.

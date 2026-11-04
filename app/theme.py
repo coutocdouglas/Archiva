@@ -240,6 +240,7 @@ QMenu::separator {{ height: 1px; background: #3a2e25; margin: 5px 8px; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 4px 2px; }}
 QScrollBar::handle:vertical {{ background: rgba(255,230,200,0.14); border-radius: 3px; min-height: 40px; }}
 QScrollBar::handle:vertical:hover {{ background: rgba(255,230,200,0.26); }}
+QScrollBar[vazia="true"]::handle:vertical {{ background: transparent; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px 4px; }}
 QScrollBar::handle:horizontal {{ background: rgba(255,230,200,0.14); border-radius: 3px; min-width: 40px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
