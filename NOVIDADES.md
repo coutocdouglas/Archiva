@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.8
+- **Registro de falhas (Configurações › Diagnóstico):** se o programa fechar sozinho, sem mensagem, agora ele deixa um registro do que aconteceu. Ele guarda a falha interna do Qt (com o que o programa estava fazendo), erros do Python, avisos do Qt e a **última ação** antes da queda, como o modelo que foi clicado e o estado da prévia dele. Na abertura seguinte, o registro avisa "QUEDA DETECTADA" e mostra essa última ação.
+- **Como usar:** em Configurações › Diagnóstico, **Salvar registro…** copia o arquivo para a pasta que você escolher (padrão: Downloads), pronto para enviar. **Abrir pasta** mostra onde ele fica e **Limpar** zera o registro. O arquivo é `registro.log`, em %APPDATA%\GerenciadorAssets3D, e não passa de cerca de 1 MB.
+
 ## 1.2.7
 - **Categorias fixadas no topo:** clique com o botão direito numa categoria (ou subpasta) e escolha "Fixar no topo". Ela ganha um atalho na seção "Fixadas", logo abaixo de "Todas as categorias", na ordem em que você fixou, e continua também na lista completa. Para tirar, botão direito e "Desafixar do topo". Subpasta fixada mostra o caminho (ex.: Luminárias › Pendente).
 - **É só seu:** as fixadas ficam guardadas neste computador, por biblioteca, e não aparecem para o resto da equipe. Se você esconder uma pasta em "Pastas visíveis", ela some da seção, mas a escolha é lembrada para quando voltar a mostrar.

@@ -7,7 +7,10 @@ from datetime import datetime
 def main():
     from PySide6.QtWidgets import QApplication, QMessageBox
 
+    from app import registro
     from app.config import APP_NAME, data_dir
+
+    registro.iniciar()     # falhas nativas, erros do Python e do Qt vão para o registro (Configurações › Diagnóstico)
     from app.main_window import MainWindow
 
     log = data_dir() / "erros.log"
@@ -19,6 +22,7 @@ def main():
                 f.write(f"\n[{datetime.now():%Y-%m-%d %H:%M:%S}]\n{text}")
         except OSError:
             pass
+        registro.erro(text)
         QMessageBox.critical(None, APP_NAME, f"Ocorreu um erro inesperado:\n\n{exc}\n\nDetalhes salvos em:\n{log}")
 
     sys.excepthook = hook
@@ -31,6 +35,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    app.aboutToQuit.connect(registro.fim_normal)
     app.setStyle("Fusion")
     from app import theme
     theme.load_fonts()

@@ -23,7 +23,7 @@ from . import extractor, intake
 from .config import APP_NAME, Config, app_dir, is_installed, version
 from . import atualizador, perfil, rede
 from .compartilhado import OP_NAMES, Compartilhado
-from . import indice
+from . import indice, registro
 from . import tutoriais
 from .database import TagDB, clean_tag
 from . import scanner as scanner_mod
@@ -651,6 +651,7 @@ class DetailsPanel(QWidget):
             return
         if len(a_list) == 1:
             a = a_list[0]
+            registro.marca(f"painel de detalhes: prévia de {a.key}")
             pix = self.w.thumbs.get(a.preview)
             self.preview.set_pixmap(pix, "sem prévia" if not a.preview else "")
             self.preview.set_source(a.preview, a.name)
@@ -659,7 +660,9 @@ class DetailsPanel(QWidget):
             self.status.setText(self.w.status_html(a))
             self.hint.setText("Arraste o cartão para a viewport do 3ds Max." if self.w.extractions.is_ready(a)
                               else "Extraia para poder arrastar para o 3ds Max.")
+            registro.marca(f"painel de detalhes: variações (.max) de {a.key}")
             self.files.fill(a, self.w.thumbs)
+            registro.marca(f"painel de detalhes: tags e coleções de {a.key}")
             tags = sorted(self.w.db.tags_of(a.key))
             counts = {t: 1 for t in tags}
         else:
@@ -862,6 +865,25 @@ class SettingsDialog(QDialog):
         imp.clicked.connect(window.import_tags)
         form.addRow(self._row(exp, imp))
 
+        form = section("Diagnóstico")
+        n_quedas = registro.quedas()
+        diag = QLabel("Se o programa fechar sozinho, ele deixa um registro do que aconteceu (inclusive qual modelo foi "
+                      "clicado). Salve o arquivo e envie para quem cuida do Archiva.")
+        diag.setWordWrap(True)
+        diag.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
+        form.addRow(diag)
+        b_log = QPushButton("Salvar registro…")
+        b_log.setToolTip("Copia o registro de falhas para uma pasta à sua escolha (padrão: Downloads)")
+        b_log.clicked.connect(self._save_log)
+        b_logdir = QPushButton("Abrir pasta")
+        b_logdir.clicked.connect(self._open_log_dir)
+        b_logclr = QPushButton("Limpar")
+        b_logclr.clicked.connect(self._clear_log)
+        self.log_info = QLabel()
+        self.log_info.setStyleSheet(f"color:{theme.FAINT.name()};")
+        form.addRow(self._row(b_log, b_logdir, b_logclr, self.log_info))
+        self._update_log_info()
+
         form = section("Atualizações")
         self.check_upd = QCheckBox("Procurar versão nova ao abrir o programa")
         self.check_upd.setChecked(bool(window.cfg["check_updates"]))
@@ -895,6 +917,34 @@ class SettingsDialog(QDialog):
     def reject(self):
         self.w._set_size(self._orig_size)
         super().reject()
+
+    def _update_log_info(self):
+        kb = max(1, registro.tamanho() // 1024)
+        q = registro.quedas()
+        self.log_info.setText(f"{kb} KB · " + (f"{q} queda(s) registrada(s)" if q else "nenhuma queda registrada"))
+
+    def _save_log(self):
+        from PySide6.QtCore import QStandardPaths
+        base = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation) or str(Path.home())
+        nome = f"Archiva-registro-{version()}-{time.strftime('%Y%m%d-%H%M')}.log"
+        dest, _ = QFileDialog.getSaveFileName(self, "Salvar registro de falhas", str(Path(base) / nome),
+                                              "Registro (*.log);;Texto (*.txt)")
+        if not dest:
+            return
+        if registro.exportar(dest):
+            QMessageBox.information(self, APP_NAME, f"Registro salvo em:\n{dest}\n\nEnvie esse arquivo para análise.")
+        else:
+            QMessageBox.warning(self, APP_NAME, "Não consegui salvar o registro nesse lugar. Tente outra pasta.")
+
+    def _open_log_dir(self):
+        from PySide6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(registro.caminho().parent)))
+
+    def _clear_log(self):
+        if QMessageBox.question(self, APP_NAME, "Apagar o registro de falhas deste computador?\n"
+                                "Salve antes, se ainda precisar dele.") == QMessageBox.Yes:
+            registro.limpar()
+            self._update_log_info()
 
     def _update_vis_label(self):
         n = len(self.w.hidden_keys())
@@ -2094,7 +2144,12 @@ class MainWindow(FramelessMixin, QMainWindow):
         return [i.data(ASSET_ROLE) for i in self.grid.selectionModel().selectedIndexes()] if self.grid.selectionModel() else []
 
     def _on_selection(self, *_):
-        self.details.set_assets(self.selected_assets())
+        sel = self.selected_assets()
+        if sel:     # se o programa cair ao clicar, o registro diz qual modelo era
+            a = sel[0]
+            registro.marca(f"selecionou {a.key} (tipo {a.kind}, prévia {a.preview or 'nenhuma'}, "
+                           f"{a.preview_size} bytes, {len(a.max_files)} .max)" + (f" e mais {len(sel) - 1}" if len(sel) > 1 else ""))
+        self.details.set_assets(sel)
 
     # ----------------------------------------------------------------- arrastar
     def drag_path_for(self, a: Asset, max_file: str | None = None) -> str | None:
