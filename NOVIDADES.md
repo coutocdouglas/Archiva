@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 1.2.10
+- **Organizar pasta com arquivo em uso:** quando o Windows recusava mover uma textura ("O arquivo já está sendo usado por outro processo", WinError 32), o programa desistia na hora. Agora ele **tenta de novo por alguns segundos** (antivírus e miniaturas do Explorer costumam soltar o arquivo logo) e só então desiste.
+- **Mensagem clara:** se o arquivo continuar preso, o aviso diz qual arquivo é, **qual programa deste computador está com ele aberto** (quando o Windows informa, ex.: 3ds Max ou Windows Explorer) e o que fazer. Como antes, nada é alterado: tudo volta ao lugar.
+
 ## 1.2.9
 - **Possível correção da queda ao clicar em certos modelos:** o registro da 1.2.8 mostrou um "stack overflow" (recursão infinita) do Qt logo depois de montar o painel de detalhes. A causa mais provável é a barra de rolagem do painel, que aparecia e sumia em ciclo com textos que quebram linha. Agora a barra fica sempre presente (o fio some quando não há o que rolar), o que impede esse ciclo. **Ainda não confirmado no Windows.**
 - **Registro mais detalhado:** além da última ação, ele guarda as 8 últimas (com a hora) e, ao montar o painel de um modelo, anota quantas tags, coleções e variações ele tem e o tamanho do painel. Se ainda cair, o registro mostra se foi durante a montagem ou depois, no layout.

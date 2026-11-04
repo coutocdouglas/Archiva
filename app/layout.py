@@ -14,6 +14,7 @@ import filecmp
 import os
 import re
 import shutil
+import sys
 import time
 from dataclasses import dataclass, field
 
@@ -195,6 +196,91 @@ def check_layout(folder: str, outer_preview: str | None, unwanted_ext: set[str],
     return reasons
 
 
+# --------------------------------------------------------------------------- arquivo em uso (Windows)
+
+EM_USO = {5, 32, 33}      # acesso negado, violação de compartilhamento, trecho do arquivo bloqueado
+
+
+class ArquivoEmUso(RuntimeError):
+    """O Windows recusou mexer num arquivo porque outro programa (ou outro computador) o mantém aberto."""
+
+
+def _em_uso(e: OSError) -> bool:
+    return getattr(e, "winerror", None) in EM_USO
+
+
+def quem_usa(caminho: str) -> list[str]:
+    """Nomes dos programas DESTE computador que mantêm o arquivo aberto (Gerenciador de Reinício do Windows).
+    Só diagnóstico: qualquer falha devolve lista vazia. Não enxerga arquivos abertos por outros computadores."""
+    if sys.platform != "win32":
+        return []
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class FILETIME(ctypes.Structure):
+            _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
+
+        class RM_UNIQUE_PROCESS(ctypes.Structure):
+            _fields_ = [("dwProcessId", wintypes.DWORD), ("ProcessStartTime", FILETIME)]
+
+        class RM_PROCESS_INFO(ctypes.Structure):
+            _fields_ = [("Process", RM_UNIQUE_PROCESS), ("strAppName", ctypes.c_wchar * 256),
+                        ("strServiceShortName", ctypes.c_wchar * 64), ("ApplicationType", ctypes.c_int),
+                        ("AppStatus", ctypes.c_ulong), ("TSSessionId", wintypes.DWORD),
+                        ("bRestartable", wintypes.BOOL)]
+
+        rm = ctypes.WinDLL("rstrtmgr")
+        sessao = wintypes.DWORD(0)
+        chave = ctypes.create_unicode_buffer(33)
+        if rm.RmStartSession(ctypes.byref(sessao), 0, chave) != 0:
+            return []
+        try:
+            arquivos = (ctypes.c_wchar_p * 1)(caminho)
+            if rm.RmRegisterResources(sessao.value, 1, arquivos, 0, None, 0, None) != 0:
+                return []
+            precisa, tem, motivos = wintypes.UINT(0), wintypes.UINT(0), wintypes.DWORD(0)
+            r = rm.RmGetList(sessao.value, ctypes.byref(precisa), ctypes.byref(tem), None, ctypes.byref(motivos))
+            if r != 234 or precisa.value == 0:          # 234 = ERROR_MORE_DATA (há processos a listar)
+                return []
+            infos = (RM_PROCESS_INFO * precisa.value)()
+            tem = wintypes.UINT(precisa.value)
+            if rm.RmGetList(sessao.value, ctypes.byref(precisa), ctypes.byref(tem), infos, ctypes.byref(motivos)) != 0:
+                return []
+            nomes = []
+            for i in range(tem.value):
+                n = infos[i].strAppName.strip()
+                if n and n not in nomes:
+                    nomes.append(n)
+            return nomes
+        finally:
+            rm.RmEndSession(sessao.value)
+    except Exception:  # noqa: BLE001 — é só um palpite para a mensagem
+        return []
+
+
+def rename_retry(src: str, dst: str, base: str | None = None, tentativas: int = 10, espera: float = 0.5) -> None:
+    """os.rename que insiste por alguns segundos quando o arquivo está momentaneamente em uso (antivírus,
+    miniatura do Explorer…). Se continuar em uso, levanta ArquivoEmUso com uma mensagem que diz o que fazer."""
+    for t in range(tentativas):
+        try:
+            os.rename(src, dst)
+            return
+        except OSError as e:
+            if not _em_uso(e):
+                raise
+            if t < tentativas - 1:
+                time.sleep(espera)
+                continue
+            nome = os.path.relpath(src, base) if base else os.path.basename(src)
+            quem = quem_usa(src)
+            onde = f" ({', '.join(quem)})" if quem else ""
+            raise ArquivoEmUso(
+                f"O arquivo '{nome}' está aberto em outro programa{onde} ou em outro computador da rede. "
+                "Feche o que estiver usando este modelo (3ds Max, Explorer com a pasta aberta, Photoshop…) "
+                "e tente de novo.") from e
+
+
 # --------------------------------------------------------------------------- aplicar o plano dentro da própria pasta
 
 def apply_in_place(folder: str, plan: Plan, junk: list[str], record: list | None = None) -> list[str]:
@@ -209,7 +295,7 @@ def apply_in_place(folder: str, plan: Plan, junk: list[str], record: list | None
             # fase 1: tira do caminho (para nunca sobrescrever nada)
             for i, (src, rel) in enumerate(todo):
                 tmp = os.path.join(staging, f"{i:05d}_{os.path.basename(src)}")
-                os.rename(src, tmp)
+                rename_retry(src, tmp, folder)
                 done.append((src, tmp))
             # fase 2: coloca no lugar certo
             for i, (src, rel) in enumerate(todo):
@@ -218,14 +304,14 @@ def apply_in_place(folder: str, plan: Plan, junk: list[str], record: list | None
                 if os.path.exists(dst):
                     raise RuntimeError(f"Já existe '{rel}' na pasta (nada foi sobrescrito).")
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
-                os.rename(tmp, dst)
+                rename_retry(tmp, dst, folder)
                 done[i] = (src, dst)
     except Exception:
         for src, cur in reversed(done):  # desfaz
             try:
                 os.makedirs(os.path.dirname(src), exist_ok=True)
-                os.rename(cur, src)
-            except OSError:
+                rename_retry(cur, src, folder, tentativas=6, espera=0.4)
+            except (OSError, ArquivoEmUso):
                 pass
         try:
             os.rmdir(staging)  # só se ficou vazia
