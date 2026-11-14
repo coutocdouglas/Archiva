@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.5
+- **Nuvem: corrigido o "Bad Gateway" ao abrir a biblioteca.** O Archiva pedia a lista cedo demais, antes de a conexão com o computador da biblioteca estar pronta, e a primeira tentativa falhava. Agora ele espera a rede entrar e achar o computador (mostrando "Entrando na rede…" / "Procurando o computador da biblioteca…"), tenta de novo se a primeira conversa falhar e, se a rede ficar pronta depois de uma falha, abre sozinho.
+- A mensagem de erro agora traz o motivo detalhado vindo do motor de rede.
+
 ## 2.0.4
 - **Nuvem: convite sem chave não passa mais despercebido.** Ao criar um convite sem a chave de acesso do Tailscale salva, o Archiva pergunta se você quer **colar a chave agora**, criar sem ela ou cancelar. O botão **Chave de acesso do Tailscale ✔** mostra que a chave está salva, e o convite criado diz em verde que "leva a chave de acesso" (a pessoa entra sem precisar de conta).
 - **Para quem recebe:** se o convite veio sem chave (ou ela expirou), a tela explica em português que é preciso pedir um convite novo a quem compartilha, e que não é necessário ter conta do Tailscale. Entrar com uma conta continua possível como alternativa.

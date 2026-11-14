@@ -193,7 +193,10 @@ func ligar(srv *tsnet.Server, ln net.Listener, alvo string) {
 		FlushInterval: 100 * time.Millisecond,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			resolver.esquecer()
-			http.Error(w, `{"erro":"o computador da biblioteca não respondeu"}`, http.StatusBadGateway)
+			msg, _ := json.Marshal(map[string]string{"erro": "o computador da biblioteca não respondeu: " + err.Error()})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write(msg)
 		},
 	}
 	s := &http.Server{Handler: proxy, ReadHeaderTimeout: 30 * time.Second}

@@ -38,6 +38,7 @@ class Conexao:
         self.motor: nuvem_motor.Motor | None = None
         self.remota: Remota | None = None
         self.erro = ""
+        self._retentou = False
         self.ultimo_erro = ""    # o último erro ao abrir (texto técnico, vai no relatório)
         self.etapa = ""          # o que o ajudante está fazendo agora (mostrado na tela)
 
@@ -59,9 +60,27 @@ class Conexao:
                                                authkey=self.dados.get("a", ""))
                 if not self.motor.iniciar():
                     raise Desligada(self.motor.erro)
+                self._esperar_rede()
             base = "http://" + self.motor.local
         self.remota = Remota(self.ident, base, self.dados["k"], self.nome)
         return self.remota
+
+    def _esperar_rede(self, limite: float = 90.0):
+        """Espera o motor entrar na rede e achar o computador da biblioteca antes do primeiro pedido
+        (sem isso, o pedido sai cedo demais e volta "Bad Gateway")."""
+        t0 = time.time()
+        while time.time() - t0 < limite and self.motor is not None and self.motor.vivo:
+            e = self.motor.estado()
+            if e.get("estado") == "NeedsLogin":
+                return                       # a tela avisa que falta a chave; não adianta esperar
+            if e.get("estado") == "Running" and e.get("alvo_ok") is True:
+                return
+            seg = int(time.time() - t0)
+            if e.get("estado") == "Running":
+                self.etapa = f"Procurando o computador da biblioteca na rede ({seg} s)"
+            else:
+                self.etapa = f"Entrando na rede do Tailscale ({seg} s)"
+            time.sleep(1.0)
 
     def remota_offline(self) -> Remota:
         """Só para ler o que já está neste PC (catálogo salvo, prévias e modelos baixados)."""
@@ -564,6 +583,11 @@ class NuvemJanela(QMainWindow):
         elif self.catalogo is None and self.conexao is not None and self.conexao.etapa:
             # a rede está de pé: mostra em que passo a biblioteca está, em vez de deixar o texto antigo
             self.situacao.setText(f"Rede conectada · {self.conexao.etapa}… ({e.get('segundos', 0)} s)")
+        elif (self.catalogo is None and self.conexao is not None and self.conexao.erro == "desligada"
+              and e.get("alvo_ok") is True and not self.conexao.etapa and not self.conexao._retentou):
+            # a rede ficou pronta depois da falha: tenta abrir de novo sozinho, uma vez
+            self.conexao._retentou = True
+            self.abrir(self.conexao.ident)
 
     def diagnostico(self):
         """Mostra o que o motor de rede está vendo, para copiar e mandar a quem dá o suporte."""
@@ -706,7 +730,14 @@ class NuvemJanela(QMainWindow):
             c.etapa = "Ligando o motor de rede"
             r = c.preparar()
             c.etapa = "Falando com o computador da biblioteca"
-            info = r.info()
+            for tentativa in range(3):          # a primeira conversa pela rede às vezes falha; tenta de novo
+                try:
+                    info = r.info()
+                    break
+                except Desligada:
+                    if tentativa == 2:
+                        raise
+                    time.sleep(3)
             c.etapa = "Baixando a lista de modelos"
             cat = r.catalogo()
             c.etapa = ""

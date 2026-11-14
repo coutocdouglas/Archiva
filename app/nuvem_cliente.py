@@ -152,7 +152,11 @@ class Remota:
             if e.code == 403:
                 raise SemAcesso("Este convite não vale mais. Peça um novo ao dono da biblioteca.") from e
             if e.code in (502, 503, 504):
-                raise Desligada(f"O computador da biblioteca não respondeu (HTTP {e.code}).") from e
+                try:
+                    corpo = e.read(300).decode("utf-8", "replace")
+                except Exception:  # noqa: BLE001
+                    corpo = ""
+                raise Desligada(f"O computador da biblioteca não respondeu (HTTP {e.code}). {corpo}".strip()) from e
             raise
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
             raise Desligada(f"O computador da biblioteca não respondeu ({type(e).__name__}: {e}).") from e
