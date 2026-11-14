@@ -2,6 +2,14 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.0
+- **Nuvem: bibliotecas de outros computadores.** O Archiva agora acessa a biblioteca de outro computador pela internet, sem instalar nada além do Archiva. A rede (Tailscale) vem embutida no instalador e roda dentro do programa, sem VPN, serviço ou administrador.
+- **Quem compartilha:** em Configurações › Biblioteca › **Compartilhar pela Nuvem…**, ligue o compartilhamento (vale enquanto o Archiva estiver aberto neste computador), entre na conta do Tailscale uma vez e crie um **convite** para cada pessoa. O convite é uma linha de texto para mandar por WhatsApp ou e-mail, e pode ser **revogado** a qualquer momento.
+- **Quem recebe:** no menu lateral, **Nuvem › Entrar com um convite**, cole a linha e pronto. A biblioteca aparece com categorias, busca, tags e prévias. **Baixar** (ou dois cliques) traz o modelo para este computador, já extraído, e o cartão pode ser **arrastado para o 3ds Max**, com as texturas religadas como na Biblioteca.
+- **Só leitura de verdade:** quem acessa de fora não apaga, move, classifica nem extrai nada na biblioteca de origem. A regra é aplicada no computador que compartilha, não no de quem acessa.
+- **Funciona desligado:** a lista e as prévias já vistas ficam guardadas, e os modelos baixados continuam disponíveis mesmo com o outro computador desligado.
+- **Tela inicial:** quem tem uma biblioteca da Nuvem salva escolhe ao abrir entre **Neste computador** e **Nuvem**. Quem não usa a Nuvem abre direto na biblioteca, como antes.
+
 ## 1.2.10
 - **Organizar pasta com arquivo em uso:** quando o Windows recusava mover uma textura ("O arquivo já está sendo usado por outro processo", WinError 32), o programa desistia na hora. Agora ele **tenta de novo por alguns segundos** (antivírus e miniaturas do Explorer costumam soltar o arquivo logo) e só então desiste.
 - **Mensagem clara:** se o arquivo continuar preso, o aviso diz qual arquivo é, **qual programa deste computador está com ele aberto** (quando o Windows informa, ex.: 3ds Max ou Windows Explorer) e o que fazer. Como antes, nada é alterado: tudo volta ao lugar.

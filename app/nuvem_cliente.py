@@ -201,7 +201,7 @@ class Remota:
         return catalogo_de(dados, agora)
 
     # ---------------------------------------------------------------- prévias
-    def previa(self, it: ItemRemoto, largura: int = 340) -> bytes | None:
+    def previa(self, it: ItemRemoto, largura: int = 340, so_disco: bool = False) -> bytes | None:
         nome = hashlib.sha1(f"{it.key}|{it.previa_mtime}|{largura}".encode("utf-8")).hexdigest() + ".jpg"
         arq = self.pasta / "previas" / nome[:2] / nome
         if arq.exists():
@@ -209,7 +209,7 @@ class Remota:
                 return arq.read_bytes()
             except OSError:
                 pass
-        if not it.tem_previa:
+        if not it.tem_previa or so_disco:
             return None
         try:
             with self._pedir(f"/api/previa?k={quote(it.key)}&w={largura}", tempo=30) as r:

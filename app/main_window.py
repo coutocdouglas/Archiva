@@ -829,6 +829,16 @@ class SettingsDialog(QDialog):
         tools = window.tools
         txt = ", ".join(f"{k}" for k in tools) or f"<span style='color:{theme.BAD.name()}'>nenhum encontrado</span>"
         form.addRow("Extratores", QLabel(f"<span style='color:{theme.MUTED.name()}'>{txt}</span>"))
+        b_nuvem = QPushButton("Compartilhar pela Nuvem…")
+        b_nuvem.setToolTip("Deixa outras pessoas verem e baixarem os modelos desta biblioteca pela internet")
+        b_nuvem.clicked.connect(lambda: window.compartilhar_nuvem(self))
+        estado_n = "ligado" if (window.cfg.values.get("nuvem") or {}).get("compartilhar") else "desligado"
+        lbl_n = QLabel(estado_n)
+        lbl_n.setStyleSheet(f"color:{theme.FAINT.name()};")
+        if lib is not None and not lib.is_admin():
+            b_nuvem.setEnabled(False)
+            b_nuvem.setToolTip("Só o administrador da biblioteca compartilha pela Nuvem")
+        form.addRow("Nuvem", self._row(b_nuvem, lbl_n))
 
         form = section("Uso")
         vers = getattr(window, "max_versions", [])
@@ -1093,8 +1103,13 @@ class MainWindow(FramelessMixin, QMainWindow):
         self._thumb_timer = QTimer(self, singleShot=True, interval=60)
         self._thumb_timer.timeout.connect(self._repaint_thumbs)
 
+        from .nuvem_host import Compartilhamento
+        self.nuvem = Compartilhamento(self)       # 2.0: compartilhar esta biblioteca pela Nuvem
+        self.nuvem_janela = None
+
         self._restore_state()
         QTimer.singleShot(0, self.start_scan)
+        QTimer.singleShot(1500, self.nuvem.iniciar_se_ligado)
 
     # ----------------------------------------------------------------- UI
     def _build_ui(self):
@@ -1314,8 +1329,9 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.sidebar = ui.Sidebar([("inicio", "Início", "inicio"), ("biblioteca", "Biblioteca", "biblioteca"),
                                    ("tags", "Tags", "tags"), ("colecoes", "Coleções", "colecoes"),
                                    ("entrada", "Entrada", "entrada"), ("organizacao", "Organização", "organizar"),
-                                   ("aprender", "Aprender", "aprender")])
-        self.sidebar.navigate.connect(lambda k: self.tabs.setCurrentWidget(self.tabs.page(k)))
+                                   ("nuvem", "Nuvem", "nuvem"), ("aprender", "Aprender", "aprender")])
+        self.sidebar.navigate.connect(self._navegar)
+        self.sidebar.buttons["nuvem"].setCheckable(False)
         # soltar cartões em "Coleções" no menu lateral: escolhe a coleção num menu
         self._col_drop = self.sidebar.buttons["colecoes"]
         self._col_drop.setAcceptDrops(True)
@@ -1499,6 +1515,9 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.thumbs.cancel_pending()
         self.entrada.shutdown()
         self.shared.unbind()
+        self.nuvem.parar_ao_fechar()
+        if self.nuvem_janela is not None:
+            self.nuvem_janela.close()
         super().closeEvent(e)
 
     # ----------------------------------------------------------------- leitura
@@ -2606,6 +2625,27 @@ class MainWindow(FramelessMixin, QMainWindow):
 
     def _bump(self):
         self.data_rev += 1
+
+    def _navegar(self, k: str):
+        if k == "nuvem":
+            self.abrir_nuvem()
+            return
+        self.tabs.setCurrentWidget(self.tabs.page(k))
+
+    def abrir_nuvem(self):
+        """Bibliotecas de outros computadores (janela própria; esta continua aberta e compartilhando)."""
+        from .nuvem_janela import NuvemJanela
+        if self.nuvem_janela is None:
+            self.nuvem_janela = NuvemJanela(self.cfg)
+            self.nuvem_janela.b_voltar_inicio.setText("‹  Fechar")
+            self.nuvem_janela.voltar.connect(self.nuvem_janela.close)
+        self.nuvem_janela.show()
+        self.nuvem_janela.raise_()
+        self.nuvem_janela.activateWindow()
+
+    def compartilhar_nuvem(self, parent=None):
+        from .nuvem_host import CompartilharDialog
+        CompartilharDialog(self).exec()
 
     def _dock_details(self, in_tags: bool):
         """O painel de detalhes é um só: fica à direita da Biblioteca e vai para a galeria de uma tag quando as Tags

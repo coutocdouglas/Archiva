@@ -5,7 +5,7 @@ name: Testar motor de rede
 on:
   push:
     branches-ignore: [main]
-    paths: [motor/**, .github/workflows/testar-motor.yml]
+    paths: [motor/**, app/nuvem_motor.py, empacotamento/testar_motor.py, .github/workflows/testar-motor.yml]
   workflow_dispatch:
 
 jobs:
@@ -41,6 +41,8 @@ jobs:
             sleep 2
           done
           echo "o motor não chegou ao pedido de login"; exit 1
+      - name: Motor pelo Python (app/nuvem_motor.py)
+        run: ARCHIVA_MOTOR=motor/archiva-rede python3 empacotamento/testar_motor.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
