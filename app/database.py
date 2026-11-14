@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS item_flags (
     flag     TEXT NOT NULL,
     PRIMARY KEY (item_key, flag)
 );
+CREATE TABLE IF NOT EXISTS item_origin (
+    item_key TEXT PRIMARY KEY,
+    data     TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS lib_cfg (
     k TEXT PRIMARY KEY,
     v TEXT
@@ -78,10 +82,10 @@ CREATE TABLE IF NOT EXISTS collection_items (
 """
 
 SHARED_TABLES = ("item_tags", "tags", "additions", "tag_groups_list", "tag_group_of", "tag_covers", "item_flags",
-                 "lib_cfg", "collections", "collection_items")
+                 "item_origin", "lib_cfg", "collections", "collection_items")
 # ordem para copiar (tags antes de item_tags, por causa da chave estrangeira)
 COPY_ORDER = ("tags", "item_tags", "additions", "tag_groups_list", "tag_group_of", "tag_covers", "item_flags",
-              "lib_cfg", "collections", "collection_items")
+              "item_origin", "lib_cfg", "collections", "collection_items")
 
 
 class _Batch:
@@ -151,6 +155,7 @@ class TagDB:
         self._now: float | None = None
         self._by_item: dict[str, set[str]] = defaultdict(set)
         self._flags: set[tuple[str, str]] = set()
+        self._origin: dict[str, dict] = {}      # ficha de origem (ex.: 3DSKY) por item
         self.conn = None
         self.open(path)
 
@@ -196,7 +201,7 @@ class TagDB:
 
     def has_shared_data(self) -> bool:
         return any(self.conn.execute(f"SELECT 1 FROM {t} LIMIT 1").fetchone()
-                   for t in ("item_tags", "additions", "tag_covers", "item_flags", "lib_cfg"))
+                   for t in ("item_tags", "additions", "tag_covers", "item_flags", "item_origin", "lib_cfg"))
 
     # aplicação de eventos de outras pessoas ----------------------------------
     def _apply_one(self, ev: dict) -> bool:
@@ -232,6 +237,7 @@ class TagDB:
                 real.execute(f"DELETE FROM {t}")
             self._by_item.clear()
             self._flags.clear()
+            self._origin.clear()
             n = sum(1 for e in events if self._apply_one(e))
         except BaseException:
             self.conn = real
@@ -296,6 +302,14 @@ class TagDB:
             "SELECT it.item_key, t.name FROM item_tags it JOIN tags t ON t.id = it.tag_id"
         ):
             self._by_item[key].add(name)
+        self._origin = {}
+        for key, data in self.conn.execute("SELECT item_key, data FROM item_origin"):
+            try:
+                d = json.loads(data)
+            except ValueError:
+                continue
+            if isinstance(d, dict) and d:
+                self._origin[key] = d
 
     # marcações por item ----------------------------------------------------
     def has_flag(self, item_key: str, flag: str) -> bool:
@@ -308,6 +322,32 @@ class TagDB:
         with self.conn:
             self.conn.execute("INSERT OR IGNORE INTO item_flags(item_key, flag) VALUES(?, ?)", (item_key, flag))
         self._flags.add((item_key, flag))
+
+    # origem do modelo (site, nome original, código da imagem) --------------
+    def origin(self, item_key: str) -> dict | None:
+        return self._origin.get(item_key)
+
+    def origin_sig(self, item_key: str):
+        """Valor que muda quando a ficha muda (a busca refaz o texto do item quando ele muda)."""
+        o = self._origin.get(item_key)
+        return json.dumps(o, sort_keys=True) if o else ""
+
+    @journaled
+    def set_origin(self, item_key: str | None, data: dict | None) -> None:
+        """Grava (ou, com data vazio, remove) a ficha de origem do item. Vale para a equipe, como as tags."""
+        if not item_key:
+            return
+        data = {k: v for k, v in (data or {}).items() if isinstance(v, str) and v.strip()}
+        with self.conn:
+            if data:
+                self.conn.execute("INSERT OR REPLACE INTO item_origin(item_key, data) VALUES(?, ?)",
+                                  (item_key, json.dumps(data, ensure_ascii=False, sort_keys=True)))
+            else:
+                self.conn.execute("DELETE FROM item_origin WHERE item_key = ?", (item_key,))
+        if data:
+            self._origin[item_key] = data
+        else:
+            self._origin.pop(item_key, None)
 
     # novidades (itens que entraram pela aba Entrada) ---------------------
     @journaled
@@ -337,6 +377,7 @@ class TagDB:
         with self.conn:
             self.conn.execute("UPDATE OR IGNORE item_tags SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE item_flags SET item_key = ? WHERE item_key = ?", (new_key, old_key))
+            self.conn.execute("UPDATE OR IGNORE item_origin SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE tag_covers SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE additions SET item_key = ? WHERE item_key = ?", (new_key, old_key))
             self.conn.execute("UPDATE OR IGNORE collection_items SET item_key = ? WHERE item_key = ?", (new_key, old_key))
@@ -348,6 +389,8 @@ class TagDB:
                 self._by_item[new_key] = had | old_tags
                 if old_tags & had:
                     self._by_item[old_key] = old_tags & had
+            if old_key in self._origin and new_key not in self._origin:
+                self._origin[new_key] = self._origin.pop(old_key)
             old_flags = {f for k, f in self._flags if k == old_key}
             new_flags = {f for k, f in self._flags if k == new_key}
             for f in old_flags - new_flags:

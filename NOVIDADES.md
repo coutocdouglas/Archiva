@@ -2,6 +2,13 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.9
+- **Propriedades do bloco.** Botão direito no modelo › **Propriedades…** mostra o que o Archiva já sabe do item (nome, categoria, tipo, tamanho do arquivo, prévia, variações, data, tags e coleções) e a seção **Origem · 3DSKY**.
+- **Origem do 3DSKY.** Cole o link da página (ou o da imagem) do modelo no 3dsky.org e clique em **Carregar**: o Archiva lê a página e preenche o **nome original**, o **link**, o **código da primeira imagem** (ex.: 8765287.69ff9ae40ba89) e o **autor**. Confira e salve. Se o site não responder, o link fica preenchido e você completa o nome e o código à mão.
+- **A ficha fica com o bloco.** É guardada junto das tags (no `_ARCHIVA`), vai com a biblioteca para outro computador e acompanha o item ao renomear, mover, excluir e desfazer. Nenhum arquivo novo é gravado nas pastas dos modelos e a forma de classificar e organizar não mudou.
+- **Busca.** A busca da Biblioteca também acha pelo nome original, pelo link, pelo código (inteiro ou só o número, como 8765287) e pelo autor.
+- Só o administrador registra a origem; os demais podem consultar.
+
 ## 2.0.8
 - **Nuvem: a primeira tela é a lista de bibliotecas.** Ao clicar em Nuvem você vê as bibliotecas conectadas (com **Abrir** e **Remover**) e o botão **Entrar com um convite…**. Só depois de escolher uma biblioteca aparecem os modelos. Dentro dela, a seta ▾ no alto tem **Todas as bibliotecas** para voltar à lista.
 

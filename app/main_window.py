@@ -24,7 +24,7 @@ from .config import APP_NAME, Config, app_dir, is_installed, version
 from . import atualizador, perfil, rede
 from .compartilhado import OP_NAMES, Compartilhado
 from . import indice, registro
-from . import tutoriais
+from . import origem, tutoriais
 from .database import TagDB, clean_tag
 from . import scanner as scanner_mod
 from .scanner import Asset, Category, normalize, scan_category
@@ -1924,13 +1924,15 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.sidebar.buttons["aprender"].set_badge(n)
 
     def _rebuild_search_text(self, assets=None):
-        """Texto de busca (nome, categoria e tags). Só refaz os itens cujas tags mudaram desde a última vez."""
+        """Texto de busca (nome, categoria, tags e origem). Só refaz os itens cujas tags mudaram desde a última vez."""
         for a in (assets or self.all_assets):
             tags = self.db.tags_of(a.key)
-            sig = (a.key, frozenset(tags))
+            org = self.db.origin_sig(a.key)
+            sig = (a.key, frozenset(tags), org)
             if a.search_text and getattr(a, "_search_sig", None) == sig:
                 continue
-            a.search_text = normalize(" ".join([a.name, a.category, *tags]))
+            a.search_text = normalize(" ".join([a.name, a.category, *tags])) + (
+                " " + origem.search_text(self.db.origin(a.key)) if org else "")
             a._search_sig = sig
 
     def _cat_items(self) -> list[QTreeWidgetItem]:
@@ -2837,6 +2839,10 @@ class MainWindow(FramelessMixin, QMainWindow):
             m.addSeparator()
             m.addAction(f"Excluir {len(sel)} itens…" if len(sel) > 1 else "Excluir item…",
                         lambda: self.delete_assets(sel))
+        if len(sel) == 1:
+            m.addSeparator()
+            from . import origem
+            m.addAction("Propriedades…", lambda: origem.open_properties(self, a))
         m.exec(self.grid.viewport().mapToGlobal(pos))
 
     def compare_duplicate(self, a: Asset):
