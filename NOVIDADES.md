@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.8
+- **Nuvem: a primeira tela é a lista de bibliotecas.** Ao clicar em Nuvem você vê as bibliotecas conectadas (com **Abrir** e **Remover**) e o botão **Entrar com um convite…**. Só depois de escolher uma biblioteca aparecem os modelos. Dentro dela, a seta ▾ no alto tem **Todas as bibliotecas** para voltar à lista.
+
 ## 2.0.7
 - **A Nuvem agora é uma aba da própria Biblioteca.** Acabou a tela inicial "Local ou Nuvem": o Archiva abre como sempre e, no menu lateral, **Nuvem** mostra a biblioteca online (use a seta ▾ no alto para trocar de biblioteca, entrar com um convite, ver o diagnóstico ou remover).
 - **Mesmo visual da Biblioteca:** categorias com miniatura e subpastas, cartões, painel de detalhes com prévia grande, busca e controle do tamanho dos cartões.

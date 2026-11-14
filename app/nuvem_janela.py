@@ -409,14 +409,19 @@ class NuvemPage(QWidget):
         self.divisor.setSizes([284, 900, 340])
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.divisor)
+        self.paginas = QStackedWidget()
+        self.paginas.addWidget(self._pagina_lista())
+        self.paginas.addWidget(self.divisor)
+        lay.addWidget(self.paginas)
 
         self._repintar = QTimer(self, singleShot=True, interval=80)
         self._repintar.timeout.connect(self._repintar_tudo)
         self._estado_timer = QTimer(self, interval=4000)
         self._estado_timer.timeout.connect(self._conferir_conexoes)
         self._estado_timer.start()
+        self.corpo.setCurrentIndex(1)
         self._atualizar_seletor()
+        self.preencher_lista()
 
     # ---------------------------------------------------------------- montagem
     def _coluna_esquerda(self) -> QWidget:
@@ -562,25 +567,119 @@ class NuvemPage(QWidget):
         self.grade.viewport().update()
 
     # ---------------------------------------------------------------- bibliotecas salvas
-    def _atualizar_seletor(self):
+    def _pagina_lista(self) -> QWidget:
+        w = QWidget()
+        l = QVBoxLayout(w)
+        l.setContentsMargins(48, TITLE_H + 8, 48, 28)
+        l.setSpacing(14)
+        t = QLabel("Nuvem")
+        t.setStyleSheet("font-size:21pt;")
+        l.addWidget(t)
+        sub = QLabel("Bibliotecas de outros computadores compartilhadas com você. Escolha uma para ver os modelos.")
+        sub.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:10.5pt;")
+        l.addWidget(sub)
+        self.lista = QListWidget()
+        self.lista.setSpacing(4)
+        self.lista.setFrameShape(QFrame.NoFrame)
+        self.lista.setStyleSheet("QListWidget{background:transparent; border:none;} "
+                                 "QListWidget::item{padding:0px; border-radius:12px; "
+                                 "background:rgba(239,226,201,0.05); margin-bottom:8px;} "
+                                 "QListWidget::item:selected{background:rgba(239,226,201,0.10);}")
+        self.lista.itemDoubleClicked.connect(lambda it: self.abrir(it.data(Qt.UserRole)))
+        l.addWidget(self.lista, 1)
+        self.vazio = QLabel("Nenhuma biblioteca ainda. Peça um convite a quem compartilha e use "
+                            "“Entrar com um convite”. Passo a passo em Aprender › Acessar uma biblioteca da Nuvem.")
+        self.vazio.setWordWrap(True)
+        self.vazio.setStyleSheet(f"color:{theme.FAINT.name()};")
+        l.addWidget(self.vazio)
+        bl = QHBoxLayout()
+        entrar = ui.primary(QPushButton("Entrar com um convite…"))
+        entrar.setFixedHeight(40)
+        entrar.clicked.connect(self.entrar_com_convite)
+        como = ui.link_button("Como funciona")
+        como.clicked.connect(lambda: hasattr(self.w, "show_tutorial") and self.w.show_tutorial("nuvem_acessar"))
+        bl.addWidget(entrar)
+        bl.addWidget(como)
+        bl.addStretch(1)
+        l.addLayout(bl)
+        return w
+
+    def preencher_lista(self):
+        self.lista.clear()
         salvas = conexoes_salvas(self.cfg)
-        if self.conexao is not None:
-            self.seletor.setText(f"{self.conexao.nome}  ▾")
-        else:
-            self.seletor.setText("Escolher biblioteca  ▾" if salvas else "Entrar com um convite…")
+        for d in salvas:
+            c = self.conexoes.get(d.get("id")) or Conexao(d)
+            self.conexoes[c.ident] = c
+            cat = c.remota_offline().catalogo_salvo()
+            extra = f"{len(cat.itens)} modelos" if cat else "ainda não aberta"
+            if cat and cat.recebido:
+                extra += f" · atualizada {time.strftime('%d/%m %H:%M', time.localtime(cat.recebido))}"
+            if c.erro == "sem acesso":
+                extra += " · convite revogado"
+            elif c.erro:
+                extra += " · desligada na última tentativa"
+            it = QListWidgetItem()
+            it.setData(Qt.UserRole, c.ident)
+            it.setSizeHint(QSize(0, 76))
+            self.lista.addItem(it)
+            self.lista.setItemWidget(it, self._linha_biblioteca(c, cat, extra))
+        self.vazio.setVisible(not salvas)
+
+    def mostrar_lista(self):
+        self.preencher_lista()
+        self.paginas.setCurrentIndex(0)
+
+    def _linha_biblioteca(self, c: "Conexao", cat, extra: str) -> QWidget:
+        w = QWidget()
+        w.setObjectName("linhaBib")
+        w.setStyleSheet("#linhaBib{background:transparent;}")
+        h = QHBoxLayout(w)
+        h.setContentsMargins(14, 8, 14, 8)
+        h.setSpacing(14)
+        capa = QLabel()
+        capa.setFixedSize(72, 54)
+        capa.setStyleSheet("background:rgba(58,43,33,0.9); border-radius:6px;")
+        if cat and cat.itens:   # capa: a prévia mais recente que já está neste PC
+            r = c.remota_offline()
+            for it in sorted(cat.itens, key=lambda i: -i.added_time)[:30]:
+                dados = r.previa(it, 340, so_disco=True)
+                if dados:
+                    pm = QPixmap()
+                    pm.loadFromData(dados)
+                    if not pm.isNull():
+                        pm = pm.scaled(capa.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                        capa.setPixmap(pm.copy((pm.width() - 72) // 2, (pm.height() - 54) // 2, 72, 54))
+                        break
+        h.addWidget(capa)
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        n = QLabel(c.nome)
+        n.setStyleSheet("font-size:12pt;")
+        s = QLabel(extra)
+        s.setStyleSheet(f"color:{theme.MUTED.name()};")
+        col.addStretch(1)
+        col.addWidget(n)
+        col.addWidget(s)
+        col.addStretch(1)
+        h.addLayout(col, 1)
+        abrir = ui.primary(QPushButton("Abrir"))
+        abrir.clicked.connect(lambda _c=False, i=c.ident: self.abrir(i))
+        h.addWidget(abrir)
+        rem = QPushButton("Remover")
+        rem.setToolTip("Tira esta biblioteca deste computador")
+        rem.clicked.connect(lambda _c=False, i=c.ident: self.remover_biblioteca(i))
+        h.addWidget(rem)
+        return w
+
+    def _atualizar_seletor(self):
+        self.seletor.setText(f"{self.conexao.nome}  ▾" if self.conexao is not None else "Bibliotecas  ▾")
         self.b_atualizar.setVisible(self.conexao is not None)
-        if not salvas:
-            self.corpo.setCurrentIndex(0)
-            self.titulo.setText("Nuvem")
-            self.situacao.setText("")
-            self.selo.setText("")
 
     def _menu_bibliotecas(self):
         salvas = conexoes_salvas(self.cfg)
-        if not salvas:
-            self.entrar_com_convite()
-            return
         m = QMenu(self)
+        m.addAction("‹  Todas as bibliotecas").triggered.connect(self.mostrar_lista)
+        m.addSeparator()
         for d in salvas:
             c = self.conexoes.get(d.get("id")) or Conexao(d)
             self.conexoes[c.ident] = c
@@ -637,11 +736,10 @@ class NuvemPage(QWidget):
             salvas.append(resultado)
         self.cfg.save()
         self.conexoes.pop(ident, None)
-        self._atualizar_seletor()
         self.abrir(ident)
 
-    def remover_biblioteca(self):
-        c = self.conexao
+    def remover_biblioteca(self, ident: str | None = None):
+        c = self.conexoes.get(ident) if ident else self.conexao
         if c is None:
             return
         if QMessageBox.question(self.window(), "Remover", f"Remover “{c.nome}” deste computador?\n\n"
@@ -649,37 +747,26 @@ class NuvemPage(QWidget):
             return
         c.parar()
         salvas = conexoes_salvas(self.cfg)
-        salvas[:] = [s for s in salvas if s.get("id") != c.ident]
+        salvas[:] = [x for x in salvas if x.get("id") != c.ident]
         self.cfg.save()
         self.conexoes.pop(c.ident, None)
-        self.conexao = None
-        self.catalogo = None
-        self.por_chave.clear()
-        self.modelo.set_itens([])
-        self.arvore.clear()
-        self.detalhes.mostrar(None)
-        self.selo.setText("")
-        self.titulo.setText("Nuvem")
-        self.situacao.setText("")
-        restantes = conexoes_salvas(self.cfg)
-        if restantes:
-            self.abrir(restantes[0].get("id"))
-        else:
-            self._atualizar_seletor()
+        if self.conexao is c:
+            self.conexao = None
+            self.catalogo = None
+            self.por_chave.clear()
+            self.modelo.set_itens([])
+            self.arvore.clear()
+            self.detalhes.mostrar(None)
+        self.mostrar_lista()
 
     def mostrar_pagina(self):
-        """Chamado quando a aba Nuvem é aberta: na primeira vez entra na última biblioteca usada."""
-        if self._primeira:
-            self._primeira = False
-            salvas = conexoes_salvas(self.cfg)
-            if salvas:
-                ultima = self.cfg.values.get("nuvem_ultima")
-                ident = next((s.get("id") for s in salvas if s.get("id") == ultima), salvas[0].get("id"))
-                self.abrir(ident)
+        """Ao abrir a aba Nuvem, a primeira tela é a lista de bibliotecas (se nenhuma estiver aberta)."""
+        if self.conexao is None:
+            self.mostrar_lista()
 
     def _conferir_conexoes(self):
         c = self.conexao
-        if c is None or c.motor is None or not self.isVisible():
+        if c is None or c.motor is None or not self.isVisible() or self.paginas.currentIndex() != 1:
             return
         segundo_plano.run_async(c.motor.estado, self._estado_motor)
 
@@ -778,6 +865,7 @@ class NuvemPage(QWidget):
         self.selo.setText("Nuvem · só leitura")
         self._atualizar_seletor()
         self.corpo.setCurrentIndex(1)
+        self.paginas.setCurrentIndex(1)
         salvo = c.remota_offline().catalogo_salvo()
         if salvo:
             self._mostrar_catalogo(salvo)

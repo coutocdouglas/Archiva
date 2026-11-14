@@ -150,9 +150,9 @@ TUTORIAIS = [
          intro="Você pode usar a biblioteca de outro computador pela internet, sem instalar nada além do "
                "Archiva e, em geral, sem criar conta. Quem compartilha manda um convite, e a biblioteca "
                "aparece na aba Nuvem, com o mesmo visual da sua.",
-         passos=["No menu lateral, abra <b>Nuvem</b> e clique em <b>Entrar com um convite…</b>.",
+         passos=["No menu lateral, abra <b>Nuvem</b>: aparece a lista das suas bibliotecas. Clique em <b>Entrar com um convite…</b>.",
                  "Cole a linha que começa com <b>ARCHIVA2-</b> e clique em <b>Entrar</b>. A primeira conexão "
-                 "pode levar até um minuto.",
+                 "pode levar até um minuto. Nas próximas vezes, é só escolher a biblioteca na lista e clicar em <b>Abrir</b>.",
                  "Navegue e busque como na Biblioteca; <b>Espaço</b> amplia a prévia. É só leitura: nada na "
                  "origem é apagado, movido ou classificado por você.",
                  "Clique com o botão direito no modelo e escolha <b>Copiar para a minha biblioteca</b>. Ele vai "
