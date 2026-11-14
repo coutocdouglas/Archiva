@@ -550,9 +550,11 @@ class NuvemJanela(QMainWindow):
     def _estado_motor(self, e: dict):
         if e.get("estado") == "NeedsLogin" and e.get("url_login") and not getattr(self, "_login_aberto", False):
             self._login_aberto = True
-            r = QMessageBox.question(self, "Entrar", "Para acessar esta biblioteca, este computador precisa entrar "
-                                     "na conta do Tailscale uma vez (o convite não trouxe a chave de acesso).\n\n"
-                                     "Abrir a página para entrar?")
+            r = QMessageBox.question(self, "Convite sem chave", "Este convite não trouxe a chave de acesso (ou ela "
+                                     "expirou), então este computador pediria uma conta do Tailscale.\n\n"
+                                     "O mais simples: peça a quem compartilha um convite novo, criado depois de "
+                                     "salvar a chave. Você não precisa de conta.\n\n"
+                                     "Quer entrar com uma conta do Tailscale mesmo assim?")
             if r == QMessageBox.Yes:
                 QDesktopServices.openUrl(QUrl(e["url_login"]))
         self._ultimo_estado = e

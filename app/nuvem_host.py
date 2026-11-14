@@ -230,6 +230,8 @@ class CompartilharDialog(QDialog):
         chave = QPushButton("Chave de acesso do Tailscale…")
         chave.setToolTip("Com ela, quem recebe o convite entra sem criar conta no Tailscale")
         chave.clicked.connect(self._editar_authkey)
+        self._chave_botao = chave
+        self._marcar_chave()
         bl.addWidget(novo)
         bl.addWidget(rev)
         bl.addStretch(1)
@@ -307,6 +309,23 @@ class CompartilharDialog(QDialog):
             QTimer.singleShot(8000, self.c.consultar_estado)
 
     def _novo_convite(self):
+        if not self.c.cfg.get("authkey"):
+            m = QMessageBox(self)
+            m.setWindowTitle("Falta a chave de acesso")
+            m.setText("Você ainda não salvou a chave de acesso do Tailscale.\n\nSem ela, quem receber o convite "
+                      "vai precisar de uma conta do Tailscale e você terá de compartilhar este computador com "
+                      "essa conta. Com a chave, a pessoa entra sozinha, só colando o convite.")
+            b_chave = m.addButton("Colar a chave agora", QMessageBox.AcceptRole)
+            m.addButton("Criar sem a chave", QMessageBox.DestructiveRole)
+            m.addButton("Cancelar", QMessageBox.RejectRole)
+            m.exec()
+            r = m.clickedButton()
+            if r is b_chave:
+                self._editar_authkey()
+                if not self.c.cfg.get("authkey"):
+                    return
+            elif r is None or r.text() == "Cancelar":
+                return
         nome, ok = _pergunta(self, "Novo convite", "Para quem é o convite?", "Nome da pessoa")
         if not ok or not nome.strip():
             return
@@ -321,7 +340,12 @@ class CompartilharDialog(QDialog):
                        "você pode revogar quando quiser.")
         aviso.setWordWrap(True)
         l.addWidget(aviso)
-        if not self.c.cfg.get("authkey"):
+        if self.c.cfg.get("authkey"):
+            com = QLabel("✔ Este convite leva a chave de acesso: a pessoa entra sem precisar de conta do Tailscale.")
+            com.setWordWrap(True)
+            com.setStyleSheet(f"color:{theme.OK.name()};" if hasattr(theme, "OK") else "")
+            l.addWidget(com)
+        else:
             sem = QLabel("Sem a chave de acesso do Tailscale, a pessoa vai precisar entrar com uma conta própria e "
                          "você compartilha este computador com ela no painel do Tailscale.")
             sem.setWordWrap(True)
@@ -348,6 +372,11 @@ class CompartilharDialog(QDialog):
                                 ) == QMessageBox.Yes:
             self.c.revogar(it.data(Qt.UserRole))
             self._preencher()
+
+    def _marcar_chave(self):
+        b = getattr(self, "_chave_botao", None)
+        if b is not None:
+            b.setText("Chave de acesso do Tailscale ✔" if self.c.cfg.get("authkey") else "Chave de acesso do Tailscale…")
 
     def _editar_authkey(self):
         d = QDialog(self)
@@ -380,6 +409,7 @@ class CompartilharDialog(QDialog):
                 return
             self.c.cfg["authkey"] = k
             self.c.salvar()
+            self._marcar_chave()
 
     def done(self, r):
         self._salvar_nome()

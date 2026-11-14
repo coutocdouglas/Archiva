@@ -187,6 +187,9 @@ def texto_estado(e: dict, modo: str = "servir", alvo: str = "") -> tuple[str, st
         rede = e.get("rede") or ""
         return ("Conectado" + (f" · rede {rede}" if rede else "")), "ok"
     if s == "NeedsLogin":
+        if modo == "ligar":
+            return ("Este convite não trouxe a chave de acesso (ou ela expirou). Peça a quem compartilha um convite "
+                    "novo, criado depois de salvar a chave. Você não precisa de conta do Tailscale.", "aviso")
         return "Falta entrar na conta (uma vez só neste computador).", "aviso"
     if s in ("Starting", "NoState", ""):
         av = (e.get("avisos") or [])
