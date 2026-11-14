@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.3
+- **Nuvem: a mensagem de erro não some mais.** Antes, depois de uma falha ao abrir a biblioteca, um aviso de andamento apagava a mensagem de erro e a tela parecia travada. Agora o erro fica na tela, com o detalhe (por exemplo "este convite não vale mais", ou o tipo de falha de conexão), e vai também no relatório do Diagnóstico.
+- Ajuste interno na ligação do motor de rede ao computador da biblioteca.
+
 ## 2.0.2
 - **Nuvem: o aviso na tela não fica mais parado.** Enquanto a lista de modelos não chega, a tela mostra o passo atual (ligando o motor de rede, falando com o computador da biblioteca, baixando a lista) e os segundos, em vez de um "Conectando…" antigo.
 - **Diagnóstico da conexão com teste:** o botão agora também testa, na hora, o caminho até o computador da biblioteca (quanto tempo leva para achar, abrir a conexão e receber a resposta, e em qual passo dá erro). O relatório mostra se cada computador está conectado direto ou por retransmissão.

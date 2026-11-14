@@ -182,9 +182,9 @@ func ligar(srv *tsnet.Server, ln net.Listener, alvo string) {
 				if err != nil {
 					return nil, err
 				}
-				dctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-				defer cancel()
-				return srv.Dial(dctx, "tcp", net.JoinHostPort(ip, "80"))
+				// ctx é o do pedido (cancelado quando o Archiva desiste); não encurtar aqui: cancelar o contexto
+				// depois de conectar poderia derrubar a conexão
+				return srv.Dial(ctx, "tcp", net.JoinHostPort(ip, "80"))
 			},
 			MaxIdleConnsPerHost:   8,
 			IdleConnTimeout:       90 * time.Second,

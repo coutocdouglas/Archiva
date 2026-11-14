@@ -38,6 +38,7 @@ class Conexao:
         self.motor: nuvem_motor.Motor | None = None
         self.remota: Remota | None = None
         self.erro = ""
+        self.ultimo_erro = ""    # o último erro ao abrir (texto técnico, vai no relatório)
         self.etapa = ""          # o que o ajudante está fazendo agora (mostrado na tela)
 
     @property
@@ -571,7 +572,7 @@ class NuvemJanela(QMainWindow):
             e = {"estado": "Parado", "erro": c.motor.erro if c.motor else "O motor de rede ainda não foi ligado."}
         else:
             e = getattr(self, "_ultimo_estado", None) or {"estado": "Sem resposta ainda"}   # atualizado a cada 4 s
-        texto = nuvem_motor.relatorio(e, c.dados, "Passo atual: " + (c.etapa or "-") + "\nSituação na tela: " + self.situacao.text())
+        texto = nuvem_motor.relatorio(e, c.dados, "Passo atual: " + (c.etapa or "-") + "\nÚltimo erro ao abrir: " + (c.ultimo_erro or "-") + "\nSituação na tela: " + self.situacao.text())
         d = QDialog(self)
         d.setWindowTitle("Diagnóstico da conexão")
         lay = QVBoxLayout(d)
@@ -723,6 +724,8 @@ class NuvemJanela(QMainWindow):
             if self.conexao is not c:
                 return
             c.erro = "sem acesso" if isinstance(e, SemAcesso) else "desligada"
+            c.etapa = ""      # senão o aviso de andamento apagaria a mensagem de erro
+            c.ultimo_erro = f"{type(e).__name__}: {e}" + (f" · causa: {e.__cause__!r}" if e.__cause__ else "")
             if isinstance(e, SemAcesso):
                 self.situacao.setText(str(e))
             elif isinstance(e, Desligada):
