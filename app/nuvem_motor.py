@@ -151,18 +151,64 @@ class Motor:
                 pass
 
 
-def texto_estado(e: dict, modo: str = "servir") -> tuple[str, str]:
+def pares_archiva(e: dict) -> list[dict]:
+    return [p for p in (e.get("pares") or []) if str(p.get("nome", "")).lower().startswith("archiva")]
+
+
+def texto_estado(e: dict, modo: str = "servir", alvo: str = "") -> tuple[str, str]:
     """(texto para a pessoa, cor: ok | aviso | erro)."""
     s = e.get("estado", "")
+    seg = int(e.get("segundos") or 0)
     if s == "Running":
         if modo == "ligar" and e.get("alvo_ok") is False:
-            return "Conectado à rede, mas o computador da biblioteca está desligado ou com o Archiva fechado.", "aviso"
+            rede = e.get("rede") or "desconhecida"
+            vistos = pares_archiva(e)
+            if not any(str(p.get("nome", "")).lower() == alvo.lower() for p in vistos):
+                if vistos:
+                    nomes = ", ".join(p.get("nome", "") for p in vistos)
+                    return (f"Este computador está na rede “{rede}” e enxerga: {nomes}, mas não o da biblioteca "
+                            f"({alvo}). Confira se o compartilhamento foi aceito nesta conta.", "aviso")
+                return (f"Este computador está na rede “{rede}” e não enxerga nenhum computador do Archiva. "
+                        "Provavelmente ele entrou numa conta diferente da de quem criou o convite: aceite o "
+                        "compartilhamento do computador da biblioteca nesta conta, ou peça um convite com chave "
+                        "de acesso.", "aviso")
+            return ("O computador da biblioteca está na rede, mas desligado ou com o Archiva fechado.", "aviso")
         rede = e.get("rede") or ""
         return ("Conectado" + (f" · rede {rede}" if rede else "")), "ok"
     if s == "NeedsLogin":
         return "Falta entrar na conta (uma vez só neste computador).", "aviso"
     if s in ("Starting", "NoState", ""):
-        return "Conectando…", "aviso"
+        av = (e.get("avisos") or [])
+        extra = f" ({av[0]})" if av else ""
+        if seg >= 45:
+            return (f"Ainda não consegui entrar na rede do Tailscale ({seg} s).{extra} Verifique a internet deste "
+                    "computador e se um firewall ou antivírus não está bloqueando o Archiva.", "aviso")
+        return f"Conectando à rede do Tailscale… ({seg} s)", "aviso"
     if s == "NeedsMachineAuth":
         return "Este computador precisa ser aprovado no painel do Tailscale.", "aviso"
     return (e.get("erro") or s or "Desligado"), "erro"
+
+
+def relatorio(e: dict, dados: dict | None = None, extra: str = "") -> str:
+    """Texto para a pessoa copiar e mandar a quem dá o suporte (não contém chaves nem convites)."""
+    d = dados or {}
+    linhas = [
+        f"Archiva · relatório da Nuvem",
+        f"Biblioteca: {d.get('n', '')}  (computador procurado: {d.get('h', '')})",
+        f"Motor: versão {e.get('versao', '?')} · ligado há {e.get('segundos', 0)} s",
+        f"Estado: {e.get('estado', '?')}",
+        f"Rede (tailnet): {e.get('rede') or '-'}",
+        f"Este PC na rede: {e.get('nome') or '-'} · {e.get('dns') or '-'} · {', '.join(e.get('ips') or []) or '-'}",
+        f"Computador da biblioteca visível: {e.get('alvo_ok')}",
+    ]
+    if e.get("erro"):
+        linhas.append(f"Erro: {e['erro']}")
+    for a in e.get("avisos") or []:
+        linhas.append(f"Aviso do Tailscale: {a}")
+    pares = e.get("pares") or []
+    linhas.append(f"Computadores que este PC enxerga ({len(pares)}):")
+    for p in pares:
+        linhas.append(f"  - {p.get('nome')} · {'online' if p.get('online') else 'offline'}")
+    if extra:
+        linhas.append(extra)
+    return "\n".join(linhas)

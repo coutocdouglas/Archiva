@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.1
+- **Nuvem: diagnóstico da conexão.** Quando a biblioteca não abre, a tela agora diz o motivo em vez de ficar só em "Conectando…": mostra em qual rede o computador entrou, quais computadores do Archiva ele enxerga e há quantos segundos tenta entrar. Se os dois computadores estiverem em contas diferentes do Tailscale, o aviso explica isso e o que fazer.
+- **Botão Diagnóstico da conexão…** (dentro da biblioteca da Nuvem): mostra um relatório para copiar e mandar a quem dá o suporte (sem chaves nem convites) e tem **Sair da conta e entrar de novo**, para trocar a conta do Tailscale usada naquele computador.
+- **Convite revogado some da lista.** Ao revogar um convite em Compartilhar pela Nuvem, o convidado é removido da lista (antes ficava marcado como "revogado"). A chave dele deixa de valer na hora. Os que já estavam marcados como revogados também saem.
+- **Conexão com limite de espera:** o motor de rede desiste de procurar o computador da biblioteca em 20 s em vez de ficar esperando.
+
 ## 2.0.0
 - **Nuvem: bibliotecas de outros computadores.** O Archiva agora acessa a biblioteca de outro computador pela internet, sem instalar nada além do Archiva. A rede (Tailscale) vem embutida no instalador e roda dentro do programa, sem VPN, serviço ou administrador.
 - **Quem compartilha:** em Configurações › Biblioteca › **Compartilhar pela Nuvem…**, ligue o compartilhamento (vale enquanto o Archiva estiver aberto neste computador), entre na conta do Tailscale uma vez e crie um **convite** para cada pessoa. O convite é uma linha de texto para mandar por WhatsApp ou e-mail, e pode ser **revogado** a qualquer momento.

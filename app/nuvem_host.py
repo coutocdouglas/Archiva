@@ -155,10 +155,17 @@ class Compartilhamento(QObject):
         return criar_convite(self.nome_rede(), chave, self.nome(), authkey=self.cfg.get("authkey", ""))
 
     def revogar(self, ident: str):
-        for c in self.convidados():
-            if c.get("id") == ident:
-                c["revogado"] = True
+        """Apaga o convidado: a chave dele deixa de existir, então o servidor passa a recusá-la."""
+        lista = self.convidados()
+        lista[:] = [c for c in lista if c.get("id") != ident]
         self.salvar()
+
+    def limpar_revogados(self):
+        """Convites revogados na 2.0.0 ficavam na lista; a partir da 2.0.1 são apagados."""
+        lista = self.convidados()
+        if any(c.get("revogado") for c in lista):
+            lista[:] = [c for c in lista if not c.get("revogado")]
+            self.salvar()
 
     def parar_ao_fechar(self):
         self._fechado = True
@@ -249,17 +256,14 @@ class CompartilharDialog(QDialog):
 
     def _preencher(self):
         self.lista.clear()
+        self.c.limpar_revogados()
         for cv in self.c.convidados():
             quando = time.strftime("%d/%m/%Y", time.localtime(cv.get("criado", 0)))
             ult = self.c.servidor.acessos.get(cv.get("id")) if self.c.servidor else None
             uso = f" · último acesso {time.strftime('%d/%m %H:%M', time.localtime(ult))}" if ult else ""
             txt = f"{cv.get('nome')}  ·  {cv.get('papel', 'leitor')}  ·  convite de {quando}{uso}"
-            if cv.get("revogado"):
-                txt += "  ·  revogado"
             it = QListWidgetItem(txt)
             it.setData(Qt.UserRole, cv.get("id"))
-            if cv.get("revogado"):
-                it.setForeground(theme.FAINT)
             self.lista.addItem(it)
 
     def _alternar(self, on: bool):

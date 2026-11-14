@@ -13,7 +13,7 @@ from PySide6.QtCore import (QAbstractListModel, QMimeData, QModelIndex, QRectF, 
 from PySide6.QtGui import QColor, QDesktopServices, QDrag, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QFrame, QHBoxLayout,
                                QLabel, QListView, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-                               QProgressBar, QPushButton, QStackedWidget,
+                               QPlainTextEdit, QProgressBar, QPushButton, QStackedWidget,
                                QStyle, QStyledItemDelegate, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from . import nuvem_motor, segundo_plano, theme, ui
@@ -360,7 +360,7 @@ class NuvemJanela(QMainWindow):
         self.paginas.addWidget(self._pagina_biblioteca())
         self._repintar = QTimer(self, singleShot=True, interval=80)
         self._repintar.timeout.connect(lambda: self.grade.viewport().update())
-        self._estado_timer = QTimer(self, interval=10000)
+        self._estado_timer = QTimer(self, interval=4000)
         self._estado_timer.timeout.connect(self._conferir_conexoes)
         self._estado_timer.start()
         self.preencher_lista()
@@ -552,9 +552,53 @@ class NuvemJanela(QMainWindow):
                                      "Abrir a página para entrar?")
             if r == QMessageBox.Yes:
                 QDesktopServices.openUrl(QUrl(e["url_login"]))
-        txt, cor = nuvem_motor.texto_estado(e, "ligar")
+        self._ultimo_estado = e
+        txt, cor = nuvem_motor.texto_estado(e, "ligar", self.conexao.dados.get("h", "") if self.conexao else "")
         if cor != "ok":
             self.situacao.setText(txt)
+
+    def diagnostico(self):
+        """Mostra o que o motor de rede está vendo, para copiar e mandar a quem dá o suporte."""
+        c = self.conexao
+        if c is None:
+            return
+        if c.motor is None or not c.motor.vivo:
+            e = {"estado": "Parado", "erro": c.motor.erro if c.motor else "O motor de rede ainda não foi ligado."}
+        else:
+            e = getattr(self, "_ultimo_estado", None) or {"estado": "Sem resposta ainda"}   # atualizado a cada 4 s
+        texto = nuvem_motor.relatorio(e, c.dados, "Situação na tela: " + self.situacao.text())
+        d = QDialog(self)
+        d.setWindowTitle("Diagnóstico da conexão")
+        lay = QVBoxLayout(d)
+        lay.setContentsMargins(20, 18, 20, 14)
+        ed = QPlainTextEdit(texto)
+        ed.setReadOnly(True)
+        lay.addWidget(ed, 1)
+        dica = QLabel("Este relatório não contém chaves nem convites.")
+        dica.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:9pt;")
+        lay.addWidget(dica)
+        bl = QHBoxLayout()
+        copiar = QPushButton("Copiar")
+        copiar.clicked.connect(lambda: (QApplication.clipboard().setText(texto), copiar.setText("Copiado")))
+        sair = QPushButton("Sair da conta e entrar de novo")
+        sair.setToolTip("Esquece a conta do Tailscale usada por este computador. Útil se ele entrou na conta errada.")
+
+        def trocar():
+            if c.motor is not None and c.motor.vivo:
+                c.motor.sair_da_conta()
+            self._login_aberto = False
+            d.accept()
+            self.situacao.setText("Saí da conta. Aguarde: vou pedir para entrar de novo…")
+        sair.clicked.connect(trocar)
+        fechar = QPushButton("Fechar")
+        fechar.clicked.connect(d.accept)
+        bl.addWidget(copiar)
+        bl.addWidget(sair)
+        bl.addStretch(1)
+        bl.addWidget(fechar)
+        lay.addLayout(bl)
+        d.resize(620, 420)
+        d.exec()
 
     # ---------------------------------------------------------------- página 2: biblioteca remota
     def _pagina_biblioteca(self) -> QWidget:
@@ -577,6 +621,10 @@ class NuvemJanela(QMainWindow):
         self.selo = QLabel("Nuvem · só leitura")
         self.selo.setStyleSheet(f"color:{theme.LINK.name()}; font-size:9pt;")
         el.addWidget(self.selo)
+        diag = QPushButton("Diagnóstico da conexão…")
+        diag.setProperty("flat", "true")
+        diag.clicked.connect(self.diagnostico)
+        el.addWidget(diag, 0, Qt.AlignLeft)
         self.arvore = QTreeWidget()
         self.arvore.setHeaderHidden(True)
         self.arvore.setColumnCount(2)

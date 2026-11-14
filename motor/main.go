@@ -45,9 +45,20 @@ type estado struct {
 	AlvoOK   *bool    `json:"alvo_ok,omitempty"` // modo ligar: o PC da biblioteca está na rede?
 	Erro     string   `json:"erro,omitempty"`    //
 	Versao   string   `json:"versao"`            // versão do motor
+	Pares    []par    `json:"pares,omitempty"`   // computadores que este PC enxerga na rede
+	Avisos   []string `json:"avisos,omitempty"`  // avisos de saúde do Tailscale (ex.: sem acesso ao servidor)
+	Segundos int      `json:"segundos"`          // há quanto tempo o motor está ligado
 }
 
-const versaoMotor = "1"
+type par struct {
+	Nome   string `json:"nome"`
+	DNS    string `json:"dns"`
+	Online bool   `json:"online"`
+}
+
+const versaoMotor = "2"
+
+var inicio = time.Now()
 
 var (
 	mu         sync.Mutex
@@ -170,7 +181,9 @@ func ligar(srv *tsnet.Server, ln net.Listener, alvo string) {
 				if err != nil {
 					return nil, err
 				}
-				return srv.Dial(ctx, "tcp", net.JoinHostPort(ip, "80"))
+				dctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+				defer cancel()
+				return srv.Dial(dctx, "tcp", net.JoinHostPort(ip, "80"))
 			},
 			MaxIdleConnsPerHost:   8,
 			IdleConnTimeout:       90 * time.Second,
@@ -241,7 +254,7 @@ func controlar(srv *tsnet.Server, ln net.Listener, modo, alvo string) {
 	mux.HandleFunc("/estado", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		e := estado{Versao: versaoMotor}
+		e := estado{Versao: versaoMotor, Segundos: int(time.Since(inicio).Seconds())}
 		lc, err := srv.LocalClient()
 		if err == nil {
 			st, err2 := lc.Status(ctx)
@@ -257,6 +270,10 @@ func controlar(srv *tsnet.Server, ln net.Listener, modo, alvo string) {
 				}
 				if st.CurrentTailnet != nil {
 					e.Rede = st.CurrentTailnet.Name
+				}
+				e.Avisos = append(e.Avisos, st.Health...)
+				for _, p := range st.Peer {
+					e.Pares = append(e.Pares, par{Nome: p.HostName, DNS: strings.TrimSuffix(p.DNSName, "."), Online: p.Online})
 				}
 				if modo == "ligar" && st.BackendState == "Running" {
 					ok := false
