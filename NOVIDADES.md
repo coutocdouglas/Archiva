@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.2
+- **Nuvem: o aviso na tela não fica mais parado.** Enquanto a lista de modelos não chega, a tela mostra o passo atual (ligando o motor de rede, falando com o computador da biblioteca, baixando a lista) e os segundos, em vez de um "Conectando…" antigo.
+- **Diagnóstico da conexão com teste:** o botão agora também testa, na hora, o caminho até o computador da biblioteca (quanto tempo leva para achar, abrir a conexão e receber a resposta, e em qual passo dá erro). O relatório mostra se cada computador está conectado direto ou por retransmissão.
+
 ## 2.0.1
 - **Nuvem: diagnóstico da conexão.** Quando a biblioteca não abre, a tela agora diz o motivo em vez de ficar só em "Conectando…": mostra em qual rede o computador entrou, quais computadores do Archiva ele enxerga e há quantos segundos tenta entrar. Se os dois computadores estiverem em contas diferentes do Tailscale, o aviso explica isso e o que fazer.
 - **Botão Diagnóstico da conexão…** (dentro da biblioteca da Nuvem): mostra um relatório para copiar e mandar a quem dá o suporte (sem chaves nem convites) e tem **Sair da conta e entrar de novo**, para trocar a conta do Tailscale usada naquele computador.

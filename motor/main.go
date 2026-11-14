@@ -54,6 +54,7 @@ type par struct {
 	Nome   string `json:"nome"`
 	DNS    string `json:"dns"`
 	Online bool   `json:"online"`
+	Via    string `json:"via,omitempty"` // direto, retransmissão (DERP) ou vazio
 }
 
 const versaoMotor = "2"
@@ -273,7 +274,13 @@ func controlar(srv *tsnet.Server, ln net.Listener, modo, alvo string) {
 				}
 				e.Avisos = append(e.Avisos, st.Health...)
 				for _, p := range st.Peer {
-					e.Pares = append(e.Pares, par{Nome: p.HostName, DNS: strings.TrimSuffix(p.DNSName, "."), Online: p.Online})
+					via := ""
+					if p.CurAddr != "" {
+						via = "direto"
+					} else if p.Relay != "" {
+						via = "retransmissão " + p.Relay
+					}
+					e.Pares = append(e.Pares, par{Nome: p.HostName, DNS: strings.TrimSuffix(p.DNSName, "."), Online: p.Online, Via: via})
 				}
 				if modo == "ligar" && st.BackendState == "Running" {
 					ok := false
@@ -303,6 +310,44 @@ func controlar(srv *tsnet.Server, ln net.Listener, modo, alvo string) {
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(e)
+	})
+	mux.HandleFunc("/teste", func(w http.ResponseWriter, r *http.Request) {
+		// modo ligar: tenta chegar ao Archiva do outro computador e conta o tempo de cada passo
+		res := map[string]any{}
+		ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
+		defer cancel()
+		resolver := &resolvedor{srv: srv, alvo: alvo}
+		t0 := time.Now()
+		ip, err := resolver.ip(ctx)
+		res["procurar_ms"] = time.Since(t0).Milliseconds()
+		if err != nil {
+			res["erro"] = "procurar: " + err.Error()
+		} else {
+			res["ip"] = ip
+			t1 := time.Now()
+			dctx, c2 := context.WithTimeout(ctx, 20*time.Second)
+			conn, err := srv.Dial(dctx, "tcp", net.JoinHostPort(ip, "80"))
+			c2()
+			res["conectar_ms"] = time.Since(t1).Milliseconds()
+			if err != nil {
+				res["erro"] = "conectar: " + err.Error()
+			} else {
+				conn.Close()
+				t2 := time.Now()
+				cli := srv.HTTPClient()
+				cli.Timeout = 15 * time.Second
+				resp, err := cli.Get("http://" + ip + "/api/info")
+				res["pedido_ms"] = time.Since(t2).Milliseconds()
+				if err != nil {
+					res["erro"] = "pedido: " + err.Error()
+				} else {
+					res["http"] = resp.StatusCode
+					resp.Body.Close()
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(res)
 	})
 	mux.HandleFunc("/sair", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

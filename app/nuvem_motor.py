@@ -126,6 +126,17 @@ class Motor:
         except (OSError, ValueError) as e:
             return {"estado": "Sem resposta", "erro": str(e)}
 
+    def teste(self) -> dict:
+        """Só no modo ligar: tenta chegar ao Archiva do outro computador e devolve o tempo de cada passo."""
+        if not self.vivo or not self.controle:
+            return {"erro": "motor parado"}
+        try:
+            op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with op.open(f"http://{self.controle}/teste", timeout=45) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except (OSError, ValueError) as e:
+            return {"erro": f"sem resposta do motor: {e}"}
+
     def sair_da_conta(self) -> bool:
         if not self.vivo:
             return False
@@ -208,7 +219,21 @@ def relatorio(e: dict, dados: dict | None = None, extra: str = "") -> str:
     pares = e.get("pares") or []
     linhas.append(f"Computadores que este PC enxerga ({len(pares)}):")
     for p in pares:
-        linhas.append(f"  - {p.get('nome')} · {'online' if p.get('online') else 'offline'}")
+        via = f" · {p['via']}" if p.get("via") else ""
+        linhas.append(f"  - {p.get('nome')} · {'online' if p.get('online') else 'offline'}{via}")
     if extra:
         linhas.append(extra)
+    return "\n".join(linhas)
+
+
+def texto_teste(t: dict) -> str:
+    linhas = ["Teste de conexão com o computador da biblioteca:"]
+    if "procurar_ms" in t:
+        linhas.append(f"  procurar na rede: {t['procurar_ms']} ms" + (f" · {t['ip']}" if t.get("ip") else ""))
+    if "conectar_ms" in t:
+        linhas.append(f"  abrir conexão: {t['conectar_ms']} ms")
+    if "pedido_ms" in t:
+        linhas.append(f"  pedido ao Archiva: {t['pedido_ms']} ms · resposta HTTP {t.get('http', '-')}")
+    if t.get("erro"):
+        linhas.append(f"  ERRO em {t['erro']}")
     return "\n".join(linhas)

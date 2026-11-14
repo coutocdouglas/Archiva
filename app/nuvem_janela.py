@@ -38,6 +38,7 @@ class Conexao:
         self.motor: nuvem_motor.Motor | None = None
         self.remota: Remota | None = None
         self.erro = ""
+        self.etapa = ""          # o que o ajudante está fazendo agora (mostrado na tela)
 
     @property
     def nome(self) -> str:
@@ -51,6 +52,7 @@ class Conexao:
             base = "http://" + self.dados["l"]
         else:
             if self.motor is None or not self.motor.vivo:
+                self.etapa = "Ligando o motor de rede"
                 self.motor = nuvem_motor.Motor("ligar", nuvem_motor.pasta_estado("acesso-" + self.ident),
                                                nuvem_motor.nome_maquina("archiva-acesso"), alvo=self.dados["h"],
                                                authkey=self.dados.get("a", ""))
@@ -556,6 +558,9 @@ class NuvemJanela(QMainWindow):
         txt, cor = nuvem_motor.texto_estado(e, "ligar", self.conexao.dados.get("h", "") if self.conexao else "")
         if cor != "ok":
             self.situacao.setText(txt)
+        elif self.catalogo is None and self.conexao is not None and self.conexao.etapa:
+            # a rede está de pé: mostra em que passo a biblioteca está, em vez de deixar o texto antigo
+            self.situacao.setText(f"Rede conectada · {self.conexao.etapa}… ({e.get('segundos', 0)} s)")
 
     def diagnostico(self):
         """Mostra o que o motor de rede está vendo, para copiar e mandar a quem dá o suporte."""
@@ -566,7 +571,7 @@ class NuvemJanela(QMainWindow):
             e = {"estado": "Parado", "erro": c.motor.erro if c.motor else "O motor de rede ainda não foi ligado."}
         else:
             e = getattr(self, "_ultimo_estado", None) or {"estado": "Sem resposta ainda"}   # atualizado a cada 4 s
-        texto = nuvem_motor.relatorio(e, c.dados, "Situação na tela: " + self.situacao.text())
+        texto = nuvem_motor.relatorio(e, c.dados, "Passo atual: " + (c.etapa or "-") + "\nSituação na tela: " + self.situacao.text())
         d = QDialog(self)
         d.setWindowTitle("Diagnóstico da conexão")
         lay = QVBoxLayout(d)
@@ -574,6 +579,15 @@ class NuvemJanela(QMainWindow):
         ed = QPlainTextEdit(texto)
         ed.setReadOnly(True)
         lay.addWidget(ed, 1)
+        if c.motor is not None and c.motor.vivo:
+            ed.appendPlainText("\nTestando a conexão com o computador da biblioteca (até 40 s)…")
+
+            def depois(t):
+                nonlocal texto
+                novo = nuvem_motor.texto_teste(t)
+                texto = texto + "\n\n" + novo
+                ed.setPlainText(texto)
+            segundo_plano.run_async(c.motor.teste, depois, lambda err: ed.appendPlainText(f"O teste falhou: {err}"))
         dica = QLabel("Este relatório não contém chaves nem convites.")
         dica.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:9pt;")
         lay.addWidget(dica)
@@ -686,9 +700,14 @@ class NuvemJanela(QMainWindow):
             self.situacao.setText("Conectando… (a primeira vez pode levar alguns segundos)")
 
         def buscar():
+            c.etapa = "Ligando o motor de rede"
             r = c.preparar()
+            c.etapa = "Falando com o computador da biblioteca"
             info = r.info()
-            return r.catalogo(), info
+            c.etapa = "Baixando a lista de modelos"
+            cat = r.catalogo()
+            c.etapa = ""
+            return cat, info
 
         def ok(res):
             cat, info = res
