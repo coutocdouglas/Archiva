@@ -68,6 +68,8 @@ DEFAULTS = {
     "abertura_off": False,        # tela de abertura (logo animada) desligada
     "tutoriais_vistos": [],
     "versao_vista": "",           # última versão aberta (para mostrar as novidades)
+    "nuvem": {},                  # 2.0: compartilhar esta biblioteca (nome, convidados com a chave só em hash)
+    "nuvem_bibliotecas": [],      # 2.0: bibliotecas de outros computadores (convites aceitos neste PC)
     "window_geometry": "",
     "splitter_state": "",
 }

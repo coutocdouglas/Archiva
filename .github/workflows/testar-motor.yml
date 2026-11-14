@@ -1,0 +1,52 @@
+# Testa o motor de rede da Nuvem (archiva-rede) sem publicar nada:
+# monta para Linux e Windows e confere que ele sobe, responde no controle e pede login ao Tailscale.
+name: Testar motor de rede
+
+on:
+  push:
+    branches-ignore: [main]
+    paths: [motor/**, .github/workflows/testar-motor.yml]
+  workflow_dispatch:
+
+jobs:
+  motor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Montar
+        working-directory: motor
+        run: |
+          go get tailscale.com@v1.104.0
+          go mod tidy
+          go vet ./...
+          go build -trimpath -o archiva-rede .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H=windowsgui" -o archiva-rede.exe .
+          ls -la archiva-rede archiva-rede.exe
+      - name: Sobe, responde e pede login
+        working-directory: motor
+        run: |
+          mkfifo entrada
+          (sleep 90 > entrada) &
+          ./archiva-rede servir --dir "$RUNNER_TEMP/estado" --nome archiva-teste --destino 127.0.0.1:9 < entrada > saida.txt 2> erro.txt &
+          for i in $(seq 1 30); do [ -s saida.txt ] && break; sleep 1; done
+          cat saida.txt; cat erro.txt
+          CTL=$(python3 -c "import json;print(json.load(open('saida.txt'))['controle'])")
+          for i in $(seq 1 30); do
+            curl -s "http://$CTL/estado" > estado.json; cat estado.json; echo
+            python3 -c "import json,sys;e=json.load(open('estado.json'));sys.exit(0 if e['estado']=='NeedsLogin' and e['url_login'].startswith('https://login.tailscale.com/') else 1)" && { echo OK; exit 0; }
+            sleep 2
+          done
+          echo "o motor não chegou ao pedido de login"; exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: archiva-rede
+          path: |
+            motor/archiva-rede
+            motor/archiva-rede.exe
+            motor/go.mod
+            motor/go.sum

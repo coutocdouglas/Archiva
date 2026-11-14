@@ -9,3 +9,4 @@ diagnostico_janela.txt
 *.bat
 # a fonte do logotipo não é distribuída: o logotipo vai desenhado em app/recursos/logo.json
 app/recursos/fontes/Archiva-Logo.ttf
+empacotamento/rede/
