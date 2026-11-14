@@ -36,9 +36,25 @@ jobs:
           $v = (Get-Content VERSION -Raw).Trim()
           "versao=$v" >> $env:GITHUB_OUTPUT
           gh release view "v$v" -R "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) { "publicar=nao" >> $env:GITHUB_OUTPUT; Write-Host "v$v já publicada." }
+          if ("${{ github.ref }}" -ne "refs/heads/main") { "publicar=nao" >> $env:GITHUB_OUTPUT; Write-Host "Ramo ${{ github.ref_name }}: só instalador de teste." }
+          elseif ($LASTEXITCODE -eq 0) { "publicar=nao" >> $env:GITHUB_OUTPUT; Write-Host "v$v já publicada." }
           else { "publicar=sim" >> $env:GITHUB_OUTPUT }
           $global:LASTEXITCODE = 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Montar o motor de rede (archiva-rede.exe)
+        shell: pwsh
+        working-directory: motor
+        run: |
+          go get tailscale.com@v1.104.0
+          go mod tidy
+          $env:GOOS = "windows"; $env:GOARCH = "amd64"; $env:CGO_ENABLED = "0"
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o ..\empacotamento\rede\archiva-rede.exe .
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Instalar dependências
         run: |

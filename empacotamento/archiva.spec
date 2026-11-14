@@ -16,6 +16,11 @@ for dirpath, _dirs, files in os.walk(rec):
         rel = os.path.relpath(dirpath, ROOT)
         datas.append((os.path.join(dirpath, f), rel))
 
+# motor de rede da Nuvem (2.0): montado em Go pelo publicar.yml antes do PyInstaller
+motor = os.path.join(SPECPATH, "rede", "archiva-rede.exe")
+if os.path.exists(motor):
+    datas.append((motor, "rede"))
+
 # módulos do Qt que o Archiva não usa (deixa o instalador bem menor)
 EXCLUDES = [
     "tkinter", "unittest", "pydoc_data",
