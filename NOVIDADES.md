@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.6
+- **Tutoriais da Nuvem em Aprender.** Dois tutoriais novos, no grupo **Biblioteca na Nuvem**, cada um com animação das telas reais:
+  - **Acessar uma biblioteca da Nuvem** (para quem recebe o convite): abrir Nuvem, colar a linha ARCHIVA2-…, esperar a primeira conexão, baixar e arrastar para o 3ds Max.
+  - **Compartilhar a sua biblioteca** (para quem tem a biblioteca): ligar o compartilhamento, salvar a chave de acesso do Tailscale, criar o convite e revogar.
+- A tela **Nuvem** vazia agora indica onde está o passo a passo (Aprender › Acessar uma biblioteca da Nuvem).
+
 ## 2.0.5
 - **Nuvem: corrigido o "Bad Gateway" ao abrir a biblioteca.** O Archiva pedia a lista cedo demais, antes de a conexão com o computador da biblioteca estar pronta, e a primeira tentativa falhava. Agora ele espera a rede entrar e achar o computador (mostrando "Entrando na rede…" / "Procurando o computador da biblioteca…"), tenta de novo se a primeira conversa falhar e, se a rede ficar pronta depois de uma falha, abre sozinho.
 - A mensagem de erro agora traz o motivo detalhado vindo do motor de rede.

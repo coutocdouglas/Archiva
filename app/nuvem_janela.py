@@ -427,7 +427,8 @@ class NuvemJanela(QMainWindow):
         bl.addWidget(self.b_abrir)
         l.addLayout(bl)
         self.vazio = QLabel("Nenhuma biblioteca ainda. Peça um convite a quem compartilha e use "
-                            "“Entrar com um convite”.")
+                            "“Entrar com um convite”. "
+                            "Passo a passo em Aprender › Acessar uma biblioteca da Nuvem.")
         self.vazio.setStyleSheet(f"color:{theme.FAINT.name()};")
         l.addWidget(self.vazio)
         return w

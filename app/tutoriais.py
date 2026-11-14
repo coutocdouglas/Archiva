@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLab
 from . import theme, ui
 from .config import app_dir
 
-GRUPOS = ["Primeiros passos", "Organizar a biblioteca", "Trabalho em equipe"]
+GRUPOS = ["Primeiros passos", "Organizar a biblioteca", "Trabalho em equipe", "Biblioteca na Nuvem"]
 
 TUTORIAIS = [
     dict(id="inicio", grupo="Primeiros passos", desde="0.10.0",
@@ -144,6 +144,36 @@ TUTORIAIS = [
                  "Um clique baixa, instala e reabre o programa em menos de um minuto.",
                  "Suas configurações, tags e o histórico continuam iguais."],
          dica="O que chegar de novo em cada versão aparece aqui em Aprender, com o selo Novo."),
+    dict(id="nuvem_acessar", grupo="Biblioteca na Nuvem", desde="2.0.6",
+         titulo="Acessar uma biblioteca da Nuvem",
+         resumo="Entre com um convite e use a biblioteca de outro computador.",
+         intro="Você pode usar a biblioteca de outro computador pela internet, sem instalar nada além do "
+               "Archiva e, em geral, sem criar conta. Quem compartilha manda um convite, e a biblioteca "
+               "aparece na sua Nuvem.",
+         passos=["No menu lateral, abra <b>Nuvem</b> e clique em <b>Entrar com um convite…</b>.",
+                 "Cole a linha que começa com <b>ARCHIVA2-</b> e clique em <b>Entrar</b>. A primeira conexão "
+                 "pode levar até um minuto.",
+                 "Navegue e busque como na Biblioteca. É só leitura: nada na origem é apagado, movido ou "
+                 "classificado por você.",
+                 "Dois cliques (ou <b>Baixar</b>) trazem o modelo ao seu computador. Depois, arraste o "
+                 "cartão para o 3ds Max."],
+         dica="O computador de quem compartilha precisa estar ligado, com o Archiva aberto. Se a biblioteca "
+              "não abrir, use <b>Diagnóstico da conexão…</b> dentro dela. O que você baixou continua "
+              "disponível sem conexão."),
+    dict(id="nuvem_compartilhar", grupo="Biblioteca na Nuvem", desde="2.0.6",
+         titulo="Compartilhar a sua biblioteca",
+         resumo="Dê acesso de leitura a outra pessoa, com um convite.",
+         intro="Deixe alguém usar a sua biblioteca à distância. Ela entra com um convite, vê e baixa os "
+               "modelos, e você decide quem acessa e pode encerrar o acesso quando quiser.",
+         passos=["Em <b>Configurações › Biblioteca › Compartilhar pela Nuvem…</b>, marque "
+                 "<b>Compartilhar</b> e entre na sua conta do Tailscale (uma vez).",
+                 "No painel do Tailscale (Settings › Keys), gere uma <b>auth key</b> marcando "
+                 "<b>Reusable</b> e cole em <b>Chave de acesso do Tailscale…</b>.",
+                 "Clique em <b>Criar convite…</b>, dê o nome da pessoa e mande a linha <b>ARCHIVA2-…</b> "
+                 "por WhatsApp ou e-mail.",
+                 "Para encerrar o acesso de alguém, selecione-a na lista e clique em <b>Revogar</b>."],
+         dica="Só vale com o Archiva aberto neste computador. Crie o convite depois de salvar a chave, senão "
+              "a pessoa precisará de conta do Tailscale. A chave dura até 90 dias."),
 ]
 
 CARD_W = 300
