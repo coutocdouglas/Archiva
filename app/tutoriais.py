@@ -144,26 +144,27 @@ TUTORIAIS = [
                  "Um clique baixa, instala e reabre o programa em menos de um minuto.",
                  "Suas configurações, tags e o histórico continuam iguais."],
          dica="O que chegar de novo em cada versão aparece aqui em Aprender, com o selo Novo."),
-    dict(id="nuvem_acessar", grupo="Biblioteca na Nuvem", desde="2.0.6",
+    dict(id="nuvem_acessar", grupo="Biblioteca na Nuvem", desde="2.0.7",
          titulo="Acessar uma biblioteca da Nuvem",
          resumo="Entre com um convite e use a biblioteca de outro computador.",
          intro="Você pode usar a biblioteca de outro computador pela internet, sem instalar nada além do "
                "Archiva e, em geral, sem criar conta. Quem compartilha manda um convite, e a biblioteca "
-               "aparece na sua Nuvem.",
+               "aparece na aba Nuvem, com o mesmo visual da sua.",
          passos=["No menu lateral, abra <b>Nuvem</b> e clique em <b>Entrar com um convite…</b>.",
                  "Cole a linha que começa com <b>ARCHIVA2-</b> e clique em <b>Entrar</b>. A primeira conexão "
                  "pode levar até um minuto.",
-                 "Navegue e busque como na Biblioteca. É só leitura: nada na origem é apagado, movido ou "
-                 "classificado por você.",
-                 "Dois cliques (ou <b>Baixar</b>) trazem o modelo ao seu computador. Depois, arraste o "
-                 "cartão para o 3ds Max."],
+                 "Navegue e busque como na Biblioteca; <b>Espaço</b> amplia a prévia. É só leitura: nada na "
+                 "origem é apagado, movido ou classificado por você.",
+                 "Clique com o botão direito no modelo e escolha <b>Copiar para a minha biblioteca</b>. Ele vai "
+                 "para a pasta <b>Entrada</b> com o nome <b>archiva_transfer_N</b> e a prévia. Depois é só "
+                 "classificar na aba <b>Entrada</b>, como qualquer download."],
          dica="O computador de quem compartilha precisa estar ligado, com o Archiva aberto. Se a biblioteca "
-              "não abrir, use <b>Diagnóstico da conexão…</b> dentro dela. O que você baixou continua "
-              "disponível sem conexão."),
-    dict(id="nuvem_compartilhar", grupo="Biblioteca na Nuvem", desde="2.0.6",
+              "não abrir, use <b>Diagnóstico da conexão…</b> no menu da biblioteca (a seta ▾ no alto da "
+              "Nuvem)."),
+    dict(id="nuvem_compartilhar", grupo="Biblioteca na Nuvem", desde="2.0.7",
          titulo="Compartilhar a sua biblioteca",
          resumo="Dê acesso de leitura a outra pessoa, com um convite.",
-         intro="Deixe alguém usar a sua biblioteca à distância. Ela entra com um convite, vê e baixa os "
+         intro="Deixe alguém usar a sua biblioteca à distância. Ela entra com um convite, vê e copia os "
                "modelos, e você decide quem acessa e pode encerrar o acesso quando quiser.",
          passos=["Em <b>Configurações › Biblioteca › Compartilhar pela Nuvem…</b>, marque "
                  "<b>Compartilhar</b> e entre na sua conta do Tailscale (uma vez).",

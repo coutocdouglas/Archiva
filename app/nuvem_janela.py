@@ -1,30 +1,34 @@
-"""Telas da Nuvem (2.0): escolha Local/Nuvem, lista de bibliotecas e a biblioteca remota (só leitura e uso).
+"""Nuvem (2.0): a biblioteca de outro computador, dentro do Archiva, com o mesmo visual da Biblioteca.
 
-A biblioteca remota funciona como a Biblioteca, mas sem nada que altere o computador de quem compartilha:
-navegar, buscar, ver prévias e variações, baixar (o modelo fica pronto neste PC) e arrastar para o 3ds Max.
+É uma página da janela principal (barra lateral › Nuvem). Só leitura: navegar, buscar, ver prévias (Espaço amplia) e
+copiar um modelo para a SUA biblioteca. A cópia vai para a pasta _ENTRADA com o nome archiva_transfer_<n> (mais a
+prévia) e depois é classificada como qualquer download. Nada aqui altera o computador de quem compartilha.
 Tudo que passa pela internet roda em ajudantes (segundo_plano); a janela nunca espera a rede.
 """
 from __future__ import annotations
 
 import os
 import time
+from types import SimpleNamespace
 
-from PySide6.QtCore import (QAbstractListModel, QMimeData, QModelIndex, QRectF, QSize, Qt, QTimer, QUrl, Signal)
-from PySide6.QtGui import QColor, QDesktopServices, QDrag, QPainter, QPainterPath, QPixmap
+from PySide6.QtCore import (QAbstractListModel, QModelIndex, QPoint, QRectF, QSize, QSizeF, Qt, QTimer)
+from PySide6.QtGui import (QColor, QDesktopServices, QFontMetrics, QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
+                           QShortcut)
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QFrame, QHBoxLayout,
-                               QLabel, QListView, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-                               QPlainTextEdit, QProgressBar, QPushButton, QStackedWidget,
-                               QStyle, QStyledItemDelegate, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+                               QLabel, QListView, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
+                               QProgressBar, QPushButton, QScrollArea, QSlider, QSplitter, QStackedWidget, QStyle,
+                               QStyledItemDelegate, QTextEdit, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from . import nuvem_motor, segundo_plano, theme, ui
-from .config import APP_NAME, Config, version
-from .nuvem_cliente import (Catalogo, Desligada, ItemRemoto, Remota, SemAcesso, id_biblioteca, ler_convite,
-                            max_do_item)
+from .barra_categorias import COUNT_ROLE, COVER_ROLE, CategoryDelegate, CategoryTree
+from .config import Config
+from .janela import TITLE_H
+from .nuvem_cliente import Catalogo, Desligada, ItemRemoto, Remota, SemAcesso, id_biblioteca, ler_convite
 from .scanner import natural_key, normalize
 
 ALL = "__todas__"
-CARD = 168
-LIMITE_MINIATURAS = 600
+LIMITE_MINIATURAS = 800
 
 
 # =========================================================================== conexões salvas
@@ -97,12 +101,11 @@ def conexoes_salvas(cfg: Config) -> list[dict]:
     return cfg.values.setdefault("nuvem_bibliotecas", [])
 
 
-# =========================================================================== modelo da grade
+# =========================================================================== modelo e cartões
 
 class ItensModel(QAbstractListModel):
-    def __init__(self, janela: "NuvemJanela"):
-        super().__init__(janela)
-        self.j = janela
+    def __init__(self, pagina: "NuvemPage"):
+        super().__init__(pagina)
         self.itens: list[ItemRemoto] = []
 
     def set_itens(self, itens):
@@ -125,10 +128,6 @@ class ItensModel(QAbstractListModel):
             return f"{it.name}\n{it.category}" + (f"\nTags: {', '.join(it.tags)}" if it.tags else "")
         return None
 
-    def flags(self, index):
-        f = super().flags(index)
-        return f | Qt.ItemIsDragEnabled if index.isValid() else f
-
     def refresh_key(self, key: str):
         for i, it in enumerate(self.itens):
             if it.key == key:
@@ -138,102 +137,131 @@ class ItensModel(QAbstractListModel):
 
 
 class CartaoDelegate(QStyledItemDelegate):
-    def __init__(self, janela: "NuvemJanela"):
-        super().__init__(janela)
-        self.j = janela
+    """Cartão igual ao da Biblioteca: prévia com cantos arredondados sobre a cor do próprio fundo, nome e situação."""
+
+    def __init__(self, pagina: "NuvemPage"):
+        super().__init__(pagina)
+        self.p = pagina
+        self._bg: dict[str, QColor] = {}
 
     def sizeHint(self, option, index):
-        return QSize(CARD + 20, CARD + 64)
+        s = self.p.tamanho
+        return QSize(s + 20, s + 64)
 
-    def paint(self, p: QPainter, opt, index):
+    def paint(self, p: QPainter, option, index):
         it: ItemRemoto = index.data(Qt.UserRole)
-        r = QRectF(opt.rect).adjusted(10, 8, -10, -8)
-        img = QRectF(r.left(), r.top(), r.width(), r.width())
+        s = self.p.tamanho
+        r = QRectF(option.rect).adjusted(10, 8, -10, -8)
         p.save()
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
+        selecionado = bool(option.state & QStyle.State_Selected)
+        hover = bool(option.state & QStyle.State_MouseOver)
+        img = QRectF(r.left(), r.top(), r.width(), s)
         path = QPainterPath()
-        path.addRoundedRect(img, 10, 10)
-        pm = self.j.miniatura(it)
-        if pm is None:
-            p.fillPath(path, QColor(239, 226, 201, 14))
+        path.addRoundedRect(img, 12, 12)
+        pix = self.p.miniatura(it)
+        p.save()
+        p.setClipPath(path)
+        if pix is not None:
+            cor = self._bg.get(it.key)
+            if cor is None:
+                from .home_page import edge_color
+                cor = self._bg[it.key] = edge_color(pix)
+            p.fillRect(img, cor)
+            sc = QSizeF(pix.size()).scaled(img.size(), Qt.KeepAspectRatio)
+            p.drawPixmap(QRectF(img.center().x() - sc.width() / 2, img.center().y() - sc.height() / 2,
+                                sc.width(), sc.height()), pix, QRectF(pix.rect()))
         else:
-            p.fillPath(path, QColor(255, 255, 255))
-            p.setClipPath(path)
-            s = pm.size().scaled(img.size().toSize(), Qt.KeepAspectRatio)
-            alvo = QRectF(img.center().x() - s.width() / 2, img.center().y() - s.height() / 2, s.width(), s.height())
-            p.drawPixmap(alvo.toRect(), pm)
-            p.setClipping(False)
-        estado = self.j.estado_item(it)
-        cor = {"pronto": theme.OK, "baixando": theme.BUSY, "fila": theme.BUSY}.get(estado, theme.LINK)
+            p.fillRect(img, QColor(255, 236, 210, 12))
+            p.setPen(theme.FAINT)
+            p.setFont(theme.ui_font(9))
+            p.drawText(img, Qt.AlignCenter, "…" if it.tem_previa else "sem prévia")
+        p.restore()
+        if selecionado:
+            theme.paint_selection(p, img, 12)
+        elif hover:
+            p.setPen(QPen(QColor(227, 207, 169, 110), 1.2))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(img.adjusted(0.6, 0.6, -0.6, -0.6), 12, 12)
+        estado = self.p.estado_item(it)
+        cor = {"copiado": theme.OK, "copiando": theme.BUSY, "fila": theme.BUSY}.get(estado, theme.LINK)
+        p.setPen(QPen(QColor(255, 255, 255, 215), 1.6))
         p.setBrush(cor)
-        p.setPen(Qt.NoPen)
-        p.drawEllipse(QRectF(img.right() - 18, img.top() + 8, 9, 9))
-        if opt.state & QStyle.State_Selected:
-            theme.paint_selection(p, img.adjusted(-2, -2, 2, 2), 12)
+        p.drawEllipse(QRectF(img.right() - 19, img.top() + 9, 10, 10))
+        if estado in ("copiando", "fila"):
+            faixa = QRectF(img.left(), img.bottom() - 22, img.width(), 22)
+            p.save()
+            p.setClipPath(path)
+            p.fillRect(faixa, QColor(30, 20, 14, 200))
+            p.restore()
+            p.setPen(theme.TEXT)
+            p.setFont(theme.ui_font(8.5))
+            txt = "na fila" if estado == "fila" else f"copiando… {self.p.pct(it)}".strip()
+            p.drawText(faixa, Qt.AlignCenter, txt)
+        f = theme.ui_font(9.8)
+        p.setFont(f)
+        fm = QFontMetrics(f)
         p.setPen(theme.TEXT)
-        p.setFont(theme.ui_font(9.5))
-        fm = p.fontMetrics()
-        p.drawText(QRectF(r.left() + 2, img.bottom() + 8, r.width() - 4, 18), Qt.AlignLeft | Qt.AlignVCenter,
-                   fm.elidedText(it.name, Qt.ElideRight, int(r.width() - 4)))
-        sub = {"pronto": "no seu PC · arraste para o Max", "baixando": f"baixando… {self.j.pct(it)}",
+        p.drawText(QRectF(r.left() + 1, img.bottom() + 8, r.width() - 2, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
+                   fm.elidedText(it.name, Qt.ElideRight, int(r.width() - 2)))
+        sub = {"copiado": f"copiado · {self.p.copiado.get(it.key, '')}", "copiando": "copiando…",
                "fila": "na fila"}.get(estado, "na nuvem" + (f" · {it.fmt.upper()}" if it.fmt else ""))
+        f2 = theme.ui_font(8.8)
+        p.setFont(f2)
         p.setPen(theme.MUTED)
-        p.setFont(theme.ui_font(8.5))
-        p.drawText(QRectF(r.left() + 2, img.bottom() + 26, r.width() - 4, 16), Qt.AlignLeft | Qt.AlignVCenter,
-                   p.fontMetrics().elidedText(sub, Qt.ElideRight, int(r.width() - 4)))
+        fm2 = QFontMetrics(f2)
+        p.drawText(QRectF(r.left() + 1, img.bottom() + 9 + fm.height(), r.width(), fm2.height()),
+                   Qt.AlignLeft | Qt.AlignVCenter, fm2.elidedText(sub, Qt.ElideRight, int(r.width())))
         p.restore()
 
 
 class Grade(QListView):
-    def __init__(self, janela: "NuvemJanela"):
+    """A grade de modelos. Não há arrastar: para usar um modelo, "Copiar para a minha biblioteca"."""
+
+    def __init__(self):
         super().__init__()
-        self.j = janela
         self.setViewMode(QListView.IconMode)
         self.setResizeMode(QListView.Adjust)
         self.setMovement(QListView.Static)
         self.setUniformItemSizes(True)
-        self.setSpacing(4)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setDragEnabled(True)
-        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setDragEnabled(False)
+        self.setMouseTracking(True)
+        self.setSpacing(0)
         self.setFrameShape(QFrame.NoFrame)
-        self.setStyleSheet("QListView{background:transparent;}")
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.verticalScrollBar().setSingleStep(30)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
 
-    def startDrag(self, actions):
-        ix = self.currentIndex()
-        if not ix.isValid():
-            return
-        it = ix.data(Qt.UserRole)
-        caminho = self.j.caminho_para_arrastar(it)
-        if not caminho:
-            return
-        md = QMimeData()
-        md.setUrls([QUrl.fromLocalFile(caminho)])
-        d = QDrag(self)
-        d.setMimeData(md)
-        pm = self.j.miniatura(it)
-        if pm is not None:
-            d.setPixmap(pm.scaledToWidth(96, Qt.SmoothTransformation))
-        d.exec(Qt.CopyAction)
+
+class Capas:
+    """Faz a barra de categorias (que pede prévias por "caminho") buscar as miniaturas da Nuvem."""
+
+    def __init__(self, pagina: "NuvemPage"):
+        self.p = pagina
+
+    def get(self, chave):
+        it = self.p.por_chave.get(chave)
+        return self.p.miniatura(it) if it is not None else None
 
 
 # =========================================================================== painel de detalhes
 
 class Detalhes(QWidget):
-    def __init__(self, janela: "NuvemJanela"):
+    def __init__(self, pagina: "NuvemPage"):
         super().__init__()
-        self.j = janela
+        self.p = pagina
         self.it: ItemRemoto | None = None
-        self.setFixedWidth(330)
+        from .main_window import PreviewBox
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(0, 0, 4, 0)
         lay.setSpacing(12)
-        self.previa = QLabel()
-        self.previa.setFixedSize(330, 330)
-        self.previa.setAlignment(Qt.AlignCenter)
-        self.previa.setStyleSheet("background:rgba(239,226,201,0.05); border-radius:12px; color:#75695c;")
+        self.previa = PreviewBox(pagina.w)
+        self.previa.mouseReleaseEvent = lambda e: (e.button() == Qt.LeftButton and self.it is not None
+                                                   and self.p.ampliar(self.it))
+        self.previa.setCursor(Qt.PointingHandCursor)
+        self.previa.setToolTip("Clique (ou Espaço) para ampliar")
         lay.addWidget(self.previa)
         self.nome = QLabel()
         self.nome.setStyleSheet("font-size:14pt;")
@@ -248,256 +276,325 @@ class Detalhes(QWidget):
         self.barra.setTextVisible(False)
         self.barra.hide()
         lay.addWidget(self.barra)
-        bl = QHBoxLayout()
-        self.b_baixar = ui.primary(QPushButton("Baixar"))
-        self.b_baixar.clicked.connect(lambda: self.it and self.j.baixar(self.it))
-        self.b_pasta = QPushButton("Abrir pasta")
-        self.b_pasta.clicked.connect(lambda: self.it and self.j.abrir_pasta(self.it))
-        self.b_apagar = QPushButton("Tirar do PC")
-        self.b_apagar.setToolTip("Apaga só a cópia baixada neste computador (a biblioteca não muda)")
-        self.b_apagar.clicked.connect(lambda: self.it and self.j.apagar_copia(self.it))
-        for b in (self.b_baixar, self.b_pasta, self.b_apagar):
-            bl.addWidget(b)
-        bl.addStretch(1)
-        lay.addLayout(bl)
+        self.b_copiar = ui.primary(QPushButton("Copiar para a minha biblioteca"))
+        self.b_copiar.setFixedHeight(38)
+        self.b_copiar.clicked.connect(lambda: self.p.copiar_selecionados())
+        lay.addWidget(self.b_copiar)
+        self.b_cancelar = QPushButton("Cancelar a cópia")
+        self.b_cancelar.clicked.connect(lambda: self.it and self.p.cancelar(self.it))
+        self.b_cancelar.hide()
+        lay.addWidget(self.b_cancelar)
         self.dica = QLabel()
         self.dica.setWordWrap(True)
         self.dica.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:9pt;")
         lay.addWidget(self.dica)
-        lay.addWidget(ui.heading("Variações", 10))
+        self.t_var = ui.heading("Variações", 10)
+        lay.addWidget(self.t_var)
         self.variacoes = QListWidget()
-        self.variacoes.setFixedHeight(110)
-        self.variacoes.setDragEnabled(True)
-        self.variacoes.startDrag = self._arrastar_variacao
+        self.variacoes.setFixedHeight(120)
+        self.variacoes.setStyleSheet("QListWidget{color:#d8cfc2; background:transparent; border:none;}")
+        self.variacoes.setSelectionMode(QAbstractItemView.NoSelection)
         lay.addWidget(self.variacoes)
         lay.addStretch(1)
         self.mostrar(None)
 
-    def mostrar(self, it: ItemRemoto | None):
+    def mostrar(self, it: ItemRemoto | None, varios: int = 1):
         self.it = it
         vis = it is not None
-        for w in (self.b_baixar, self.b_pasta, self.b_apagar, self.variacoes):
+        for w in (self.b_copiar, self.t_var, self.variacoes):
             w.setVisible(vis)
         if not vis:
-            self.previa.setPixmap(QPixmap())
-            self.previa.setText("Selecione um modelo")
+            self.previa.set_pixmap(None, "Selecione um modelo")
             self.nome.setText("")
             self.info.setText("")
-            self.dica.setText("")
+            self.dica.setText("Clique num modelo para ver a prévia. Espaço amplia; botão direito copia para a sua "
+                              "biblioteca.")
             self.barra.hide()
+            self.b_cancelar.hide()
             return
-        self.nome.setText(it.name)
+        self.nome.setText(it.name if varios <= 1 else f"{it.name}  +{varios - 1}")
         partes = [it.category.replace("/", " › ")]
         if it.tags:
             partes.append("Tags: " + ", ".join(it.tags))
         self.info.setText("\n".join(partes))
+        self.b_copiar.setText("Copiar para a minha biblioteca" if varios <= 1 else f"Copiar {varios} modelos")
         self.variacoes.clear()
         for v in it.variacoes or []:
             self.variacoes.addItem(QListWidgetItem(v))
-        if not it.variacoes:
-            self.variacoes.addItem(QListWidgetItem("(conhecidas depois de baixar)" if it.tipo != "folder" else "—"))
-        pm = self.j.previa_grande(it)
-        if pm is not None:
-            self.previa.setPixmap(pm.scaled(self.previa.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        else:
-            self.previa.setPixmap(QPixmap())
-            self.previa.setText("carregando…" if it.tem_previa else "sem prévia")
+        vazio = not it.variacoes
+        self.t_var.setVisible(not vazio)
+        self.variacoes.setVisible(not vazio)
+        pm = self.p.previa_grande(it)
+        self.previa.set_pixmap(pm, "carregando…" if it.tem_previa else "sem prévia")
         self.atualizar_estado()
 
     def atualizar_estado(self):
         it = self.it
         if it is None:
             return
-        e = self.j.estado_item(it)
-        self.b_baixar.setVisible(e not in ("pronto", "baixando", "fila"))
-        self.b_pasta.setVisible(e == "pronto")
-        self.b_apagar.setVisible(e == "pronto")
-        self.barra.setVisible(e in ("baixando", "fila"))
-        feito, total = self.j.progresso.get(it.key, (0, 0))
+        e = self.p.estado_item(it)
+        ocupado = e in ("copiando", "fila")
+        self.b_copiar.setEnabled(not ocupado)
+        self.b_cancelar.setVisible(ocupado)
+        self.barra.setVisible(ocupado)
+        feito, total = self.p.progresso.get(it.key, (0, 0))
         self.barra.setRange(0, 1000 if total else 0)
         if total:
             self.barra.setValue(int(feito * 1000 / max(total, 1)))
-        if e == "pronto":
-            self.dica.setText("Arraste o cartão (ou uma variação) para o 3ds Max. As texturas vêm da pasta baixada.")
-            pasta = self.j.conexao.remota_offline().baixado(it)
-            if pasta and (not it.variacoes or it.tipo != "folder"):
-                _p, maxes, _d = max_do_item(pasta)
-                if maxes:
-                    self.variacoes.clear()
-                    for m in maxes:
-                        li = QListWidgetItem(os.path.basename(m))
-                        li.setData(Qt.UserRole, m)
-                        self.variacoes.addItem(li)
-        elif e == "baixando":
-            self.dica.setText(f"Baixando… {self.j.pct(it)}  (pode continuar navegando)")
+        if e == "copiado":
+            self.dica.setText(f"Copiado para a Entrada como {self.p.copiado.get(it.key, '')}. Classifique na aba "
+                              "Entrada como qualquer download.")
+        elif e == "copiando":
+            self.dica.setText(f"Copiando… {self.p.pct(it)}  (pode continuar navegando)")
         elif e == "fila":
-            self.dica.setText("Na fila para baixar")
+            self.dica.setText("Na fila para copiar")
         else:
-            self.dica.setText("Baixe para usar: o modelo fica pronto neste computador e pode ir para o Max.")
-
-    def _arrastar_variacao(self, actions):
-        li = self.variacoes.currentItem()
-        caminho = li.data(Qt.UserRole) if li else None
-        if not caminho or not self.it:
-            return
-        caminho = self.j.caminho_para_arrastar(self.it, caminho)
-        if not caminho:
-            return
-        md = QMimeData()
-        md.setUrls([QUrl.fromLocalFile(caminho)])
-        d = QDrag(self.variacoes)
-        d.setMimeData(md)
-        d.exec(Qt.CopyAction)
+            self.dica.setText("Vai para a pasta Entrada da sua biblioteca, com o nome archiva_transfer_N e a prévia. "
+                              "Depois você classifica onde quiser.")
 
 
-# =========================================================================== janela
+# =========================================================================== página
 
-class NuvemJanela(QMainWindow):
-    voltar = Signal()
+class NuvemPage(QWidget):
+    """A aba "Nuvem" da janela principal."""
 
-    def __init__(self, cfg: Config | None = None, parent=None):
-        super().__init__(parent)
+    def __init__(self, janela):
+        super().__init__()
         segundo_plano.init()
-        self.cfg = cfg or Config()
-        self.setWindowTitle(f"{APP_NAME} · Nuvem")
-        self.resize(1360, 840)
+        self.w = janela
+        self.cfg: Config = janela.cfg
         self.conexoes: dict[str, Conexao] = {}
         self.conexao: Conexao | None = None
         self.catalogo: Catalogo | None = None
+        self.por_chave: dict[str, ItemRemoto] = {}
         self._minis: dict[str, QPixmap] = {}
         self._grandes: dict[str, QPixmap] = {}
         self._pedidas: set[str] = set()
-        self.baixando: dict[str, str] = {}             # chave -> "fila" | "baixando"
+        self.copiando: dict[str, str] = {}              # chave -> "fila" | "copiando"
+        self.copiado: dict[str, str] = {}               # chave -> archiva_transfer_N (nesta sessão)
         self.progresso: dict[str, tuple[int, int]] = {}
         self._cancelar: set[str] = set()
+        self._reservados: set[int] = set()
         self._cat = ALL
+        self._primeira = True
+        self._login_aberto = False
+        self.tamanho = max(120, min(300, int(self.cfg["thumb_size"] or 168)))
 
-        raiz = ui.Root()
-        self.setCentralWidget(raiz)
-        lay = QVBoxLayout(raiz)
+        # ---------------- esquerda: biblioteca escolhida + categorias
+        esq = self._coluna_esquerda()
+        # ---------------- centro: título, busca e grade (ou boas-vindas)
+        centro = self._coluna_centro()
+        # ---------------- direita: detalhes
+        from .main_window import SideColumn
+        dir_ = self.right_col = SideColumn(border_left=True)
+        dl = QVBoxLayout(dir_)
+        dl.setContentsMargins(28, TITLE_H + 8, 24, 16)
+        self.detalhes = Detalhes(self)
+        rolagem = QScrollArea()
+        rolagem.setWidgetResizable(True)
+        rolagem.setFrameShape(QFrame.NoFrame)
+        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        rolagem.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget {background:transparent;}")
+        rolagem.setWidget(self.detalhes)
+        dl.addWidget(rolagem)
+        dir_.setMinimumWidth(280)
+
+        self.divisor = QSplitter()
+        self.divisor.setHandleWidth(1)
+        self.divisor.setChildrenCollapsible(False)
+        self.divisor.addWidget(esq)
+        self.divisor.addWidget(centro)
+        self.divisor.addWidget(dir_)
+        self.divisor.setStretchFactor(1, 1)
+        self.divisor.setSizes([284, 900, 340])
+        lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.paginas = QStackedWidget()
-        lay.addWidget(self.paginas)
-        self.paginas.addWidget(self._pagina_lista())
-        self.paginas.addWidget(self._pagina_biblioteca())
+        lay.addWidget(self.divisor)
+
         self._repintar = QTimer(self, singleShot=True, interval=80)
-        self._repintar.timeout.connect(lambda: self.grade.viewport().update())
+        self._repintar.timeout.connect(self._repintar_tudo)
         self._estado_timer = QTimer(self, interval=4000)
         self._estado_timer.timeout.connect(self._conferir_conexoes)
         self._estado_timer.start()
-        self.preencher_lista()
+        self._atualizar_seletor()
 
-    # ---------------------------------------------------------------- página 1: bibliotecas
-    def _pagina_lista(self) -> QWidget:
-        w = QWidget()
-        l = QVBoxLayout(w)
-        l.setContentsMargins(40, 36, 40, 28)
-        l.setSpacing(14)
-        topo = QHBoxLayout()
-        self.b_voltar_inicio = QPushButton("‹  Início")
-        self.b_voltar_inicio.setProperty("flat", "true")
-        self.b_voltar_inicio.clicked.connect(self.voltar.emit)
-        topo.addWidget(self.b_voltar_inicio)
-        t = QLabel("Nuvem")
-        t.setStyleSheet("font-size:20pt;")
-        topo.addWidget(t)
-        topo.addStretch(1)
-        l.addLayout(topo)
-        sub = QLabel("Bibliotecas de outros computadores compartilhadas com você.")
-        sub.setStyleSheet(f"color:{theme.MUTED.name()};")
-        l.addWidget(sub)
-        self.lista = QListWidget()
-        self.lista.setSpacing(4)
-        self.lista.setStyleSheet("QListWidget{background:transparent; border:none;} "
-                                 "QListWidget::item{padding:0px; border-radius:12px; "
-                                 "background:rgba(239,226,201,0.05); margin-bottom:8px;} "
-                                 "QListWidget::item:selected{background:rgba(239,226,201,0.10);}")
-        self.lista.itemDoubleClicked.connect(lambda it: self.abrir(it.data(Qt.UserRole)))
-        l.addWidget(self.lista, 1)
-        bl = QHBoxLayout()
-        entrar = QPushButton("Entrar com um convite…")
+    # ---------------------------------------------------------------- montagem
+    def _coluna_esquerda(self) -> QWidget:
+        from .main_window import SideColumn
+        esq = SideColumn()
+        l = QVBoxLayout(esq)
+        l.setContentsMargins(14, TITLE_H + 8, 14, 16)
+        l.setSpacing(6)
+        hh = QHBoxLayout()
+        hh.setContentsMargins(12, 0, 8, 0)
+        hh.addWidget(ui.heading("Biblioteca da Nuvem", 10))
+        hh.addStretch(1)
+        l.addLayout(hh)
+        self.seletor = QPushButton()
+        self.seletor.setCursor(Qt.PointingHandCursor)
+        self.seletor.setMinimumHeight(40)
+        self.seletor.setStyleSheet("QPushButton{text-align:left; padding:6px 14px; font-size:10.5pt;}")
+        self.seletor.clicked.connect(self._menu_bibliotecas)
+        l.addWidget(self.seletor)
+        self.selo = QLabel("")
+        self.selo.setStyleSheet(f"color:{theme.LINK.name()}; font-size:9pt; padding-left:14px;")
+        l.addWidget(self.selo)
+        l.addSpacing(6)
+        hc = QHBoxLayout()
+        hc.setContentsMargins(12, 0, 8, 0)
+        hc.addWidget(ui.heading("Categorias", 10))
+        hc.addStretch(1)
+        self.cat_count = QLabel()
+        self.cat_count.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
+        hc.addWidget(self.cat_count)
+        l.addLayout(hc)
+        self.arvore = CategoryTree()
+        self.arvore.setHeaderHidden(True)
+        self.arvore.setIndentation(14)
+        self.arvore.setRootIsDecorated(False)
+        self.arvore.setItemDelegate(CategoryDelegate(SimpleNamespace(thumbs=Capas(self)), self.arvore))
+        self.arvore.setMouseTracking(True)
+        self.arvore.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.arvore.setFrameShape(QFrame.NoFrame)
+        self.arvore.currentItemChanged.connect(lambda *_: self._mudou_categoria())
+        l.addWidget(self.arvore, 1)
+        esq.setMinimumWidth(256)
+        return esq
+
+    def _coluna_centro(self) -> QWidget:
+        centro = QWidget()
+        cl = QVBoxLayout(centro)
+        cl.setContentsMargins(36, TITLE_H + 8, 36, 0)
+        cl.setSpacing(20)
+        trow = QHBoxLayout()
+        self.titulo = QLabel("Nuvem")
+        self.titulo.setStyleSheet("font-size:21pt;")
+        trow.addWidget(self.titulo)
+        trow.addStretch(1)
+        self.b_atualizar = QPushButton()
+        self.b_atualizar.setIcon(ui.icon("atualizar", theme.MUTED, 18))
+        self.b_atualizar.setToolTip("Atualizar a lista desta biblioteca")
+        self.b_atualizar.setFixedSize(38, 38)
+        self.b_atualizar.setCursor(Qt.PointingHandCursor)
+        self.b_atualizar.clicked.connect(lambda: self.conexao and self.abrir(self.conexao.ident))
+        trow.addWidget(self.b_atualizar, 0, Qt.AlignTop)
+        cl.addLayout(trow)
+        self.situacao = QLabel()
+        self.situacao.setWordWrap(True)
+        self.situacao.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:10.5pt;")
+        cl.addWidget(self.situacao)
+        self.corpo = QStackedWidget()
+        cl.addWidget(self.corpo, 1)
+
+        # página 0: boas-vindas (nenhuma biblioteca ainda)
+        bv = QWidget()
+        bl = QVBoxLayout(bv)
+        bl.setAlignment(Qt.AlignCenter)
+        bl.setSpacing(12)
+        t = QLabel("Acesse a biblioteca de outra pessoa")
+        t.setStyleSheet("font-size:15pt;")
+        t.setAlignment(Qt.AlignCenter)
+        s = QLabel("Cole o convite que você recebeu. Você vê as prévias e copia os modelos que quiser\n"
+                   "para a sua biblioteca. Não precisa de conta nem instalar nada.")
+        s.setAlignment(Qt.AlignCenter)
+        s.setStyleSheet(f"color:{theme.MUTED.name()};")
+        entrar = ui.primary(QPushButton("Entrar com um convite…"))
+        entrar.setFixedHeight(40)
         entrar.clicked.connect(self.entrar_com_convite)
-        self.b_abrir = QPushButton("Abrir")
-        self.b_abrir.hide()      # cada linha tem o seu "Abrir"
-        remover = QPushButton("Remover deste PC")
-        remover.clicked.connect(self.remover_biblioteca)
-        bl.addWidget(entrar)
-        bl.addWidget(remover)
-        bl.addStretch(1)
-        bl.addWidget(self.b_abrir)
-        l.addLayout(bl)
-        self.vazio = QLabel("Nenhuma biblioteca ainda. Peça um convite a quem compartilha e use "
-                            "“Entrar com um convite”. "
-                            "Passo a passo em Aprender › Acessar uma biblioteca da Nuvem.")
-        self.vazio.setStyleSheet(f"color:{theme.FAINT.name()};")
-        l.addWidget(self.vazio)
-        return w
+        como = ui.link_button("Como funciona (passo a passo)")
+        como.clicked.connect(lambda: hasattr(self.w, "show_tutorial") and self.w.show_tutorial("nuvem_acessar"))
+        bl.addWidget(t)
+        bl.addWidget(s)
+        bl.addSpacing(6)
+        bl.addWidget(entrar, 0, Qt.AlignCenter)
+        bl.addWidget(como, 0, Qt.AlignCenter)
+        self.corpo.addWidget(bv)
 
-    def preencher_lista(self):
-        self.lista.clear()
+        # página 1: busca + grade
+        gr = QWidget()
+        gl = QVBoxLayout(gr)
+        gl.setContentsMargins(0, 0, 0, 0)
+        gl.setSpacing(20)
+        brow = QHBoxLayout()
+        brow.setSpacing(12)
+        self.busca = ui.SearchField("Buscar por nome, categoria ou tag")
+        self.busca.setMinimumWidth(220)
+        self.busca.edit.textChanged.connect(lambda: self._busca_timer.start())
+        self._busca_timer = QTimer(self, singleShot=True, interval=180)
+        self._busca_timer.timeout.connect(self.filtrar)
+        brow.addWidget(self.busca, 1)
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(120, 300)
+        self.slider.setValue(self.tamanho)
+        self.slider.setFixedWidth(110)
+        self.slider.setToolTip("Tamanho dos cartões")
+        self.slider.valueChanged.connect(self._mudou_tamanho)
+        pequeno = QLabel()
+        pequeno.setPixmap(ui.icon_pixmap("biblioteca", theme.FAINT, 13))
+        grande = QLabel()
+        grande.setPixmap(ui.icon_pixmap("biblioteca", theme.MUTED, 19))
+        brow.addSpacing(6)
+        brow.addWidget(pequeno)
+        brow.addWidget(self.slider)
+        brow.addWidget(grande)
+        gl.addLayout(brow)
+        self.modelo = ItensModel(self)
+        self.grade = Grade()
+        self.grade.setModel(self.modelo)
+        self.grade.setItemDelegate(CartaoDelegate(self))
+        self.grade.selectionModel().selectionChanged.connect(self._mudou_selecao)
+        self.grade.customContextMenuRequested.connect(self._menu_item)
+        self.grade.doubleClicked.connect(lambda ix: self.ampliar(ix.data(Qt.UserRole)))
+        self.grade.verticalScrollBar().valueChanged.connect(lambda: self._repintar.start())
+        atalho = QShortcut(QKeySequence(Qt.Key_Space), self.grade, context=Qt.WidgetShortcut)
+        atalho.activated.connect(self._espaco)
+        gl.addWidget(self.grade, 1)
+        self.corpo.addWidget(gr)
+        return centro
+
+    def _repintar_tudo(self):
+        self.grade.viewport().update()
+        self.arvore.viewport().update()
+
+    def _mudou_tamanho(self, v: int):
+        self.tamanho = v
+        self.grade.doItemsLayout()
+        self.grade.viewport().update()
+
+    # ---------------------------------------------------------------- bibliotecas salvas
+    def _atualizar_seletor(self):
         salvas = conexoes_salvas(self.cfg)
+        if self.conexao is not None:
+            self.seletor.setText(f"{self.conexao.nome}  ▾")
+        else:
+            self.seletor.setText("Escolher biblioteca  ▾" if salvas else "Entrar com um convite…")
+        self.b_atualizar.setVisible(self.conexao is not None)
+        if not salvas:
+            self.corpo.setCurrentIndex(0)
+            self.titulo.setText("Nuvem")
+            self.situacao.setText("")
+            self.selo.setText("")
+
+    def _menu_bibliotecas(self):
+        salvas = conexoes_salvas(self.cfg)
+        if not salvas:
+            self.entrar_com_convite()
+            return
+        m = QMenu(self)
         for d in salvas:
             c = self.conexoes.get(d.get("id")) or Conexao(d)
             self.conexoes[c.ident] = c
-            r = c.remota_offline()
-            cat = r.catalogo_salvo()
-            extra = f"{len(cat.itens)} itens" if cat else "ainda não aberta"
-            if cat and cat.recebido:
-                extra += f" · atualizada {time.strftime('%d/%m %H:%M', time.localtime(cat.recebido))}"
-            if c.erro == "sem acesso":
-                extra += " · convite revogado"
-            elif c.erro:
-                extra += " · desligada na última tentativa"
-            it = QListWidgetItem()
-            it.setData(Qt.UserRole, c.ident)
-            it.setSizeHint(QSize(0, 76))
-            self.lista.addItem(it)
-            self.lista.setItemWidget(it, self._linha_biblioteca(c, cat, extra))
-        self.vazio.setVisible(not salvas)
-        self.b_abrir.setEnabled(bool(salvas))
-        if salvas and self.lista.currentRow() < 0:
-            self.lista.setCurrentRow(0)
-
-    def _linha_biblioteca(self, c: "Conexao", cat, extra: str) -> QWidget:
-        w = QWidget()
-        w.setObjectName("linhaBib")
-        w.setStyleSheet("#linhaBib{background:transparent;}")
-        h = QHBoxLayout(w)
-        h.setContentsMargins(14, 8, 14, 8)
-        h.setSpacing(14)
-        capa = QLabel()
-        capa.setFixedSize(72, 54)
-        capa.setStyleSheet("background:rgba(58,43,33,0.9); border-radius:6px;")
-        if cat and cat.itens:   # capa: a prévia mais recente que já está neste PC
-            r = c.remota_offline()
-            for it in sorted(cat.itens, key=lambda i: -i.added_time)[:30]:
-                dados = r.previa(it, 340, so_disco=True)
-                if dados:
-                    pm = QPixmap()
-                    pm.loadFromData(dados)
-                    if not pm.isNull():
-                        pm = pm.scaled(capa.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                        capa.setPixmap(pm.copy((pm.width() - 72) // 2, (pm.height() - 54) // 2, 72, 54))
-                        break
-        h.addWidget(capa)
-        col = QVBoxLayout()
-        col.setSpacing(2)
-        n = QLabel(c.nome)
-        n.setStyleSheet("font-size:12pt;")
-        s = QLabel(extra)
-        s.setStyleSheet(f"color:{theme.MUTED.name()};")
-        col.addStretch(1)
-        col.addWidget(n)
-        col.addWidget(s)
-        col.addStretch(1)
-        h.addLayout(col, 1)
-        abrir = ui.primary(QPushButton("Abrir"))
-        abrir.clicked.connect(lambda _c=False, i=c.ident: self.abrir(i))
-        h.addWidget(abrir)
-        return w
+            a = m.addAction(("✔  " if self.conexao is c else "     ") + c.nome)
+            a.triggered.connect(lambda _x=False, i=c.ident: self.abrir(i))
+        m.addSeparator()
+        m.addAction("Entrar com um convite…").triggered.connect(self.entrar_com_convite)
+        if self.conexao is not None:
+            m.addAction("Diagnóstico da conexão…").triggered.connect(self.diagnostico)
+            m.addAction(f"Remover “{self.conexao.nome}” deste PC").triggered.connect(self.remover_biblioteca)
+        m.exec(self.seletor.mapToGlobal(QPoint(0, self.seletor.height())))
 
     def entrar_com_convite(self):
-        d = QDialog(self)
+        d = QDialog(self.window())
         d.setWindowTitle("Entrar com um convite")
         l = QVBoxLayout(d)
         l.setContentsMargins(24, 20, 24, 16)
@@ -540,37 +637,56 @@ class NuvemJanela(QMainWindow):
             salvas.append(resultado)
         self.cfg.save()
         self.conexoes.pop(ident, None)
-        self.preencher_lista()
+        self._atualizar_seletor()
         self.abrir(ident)
 
     def remover_biblioteca(self):
-        it = self.lista.currentItem()
-        if not it:
+        c = self.conexao
+        if c is None:
             return
-        ident = it.data(Qt.UserRole)
-        c = self.conexoes.get(ident)
-        if QMessageBox.question(self, "Remover", f"Remover “{c.nome if c else ''}” deste computador?\n\n"
-                                "Os modelos que você baixou dela continuam no PC até você apagar a pasta.") \
-                != QMessageBox.Yes:
+        if QMessageBox.question(self.window(), "Remover", f"Remover “{c.nome}” deste computador?\n\n"
+                                "As cópias que você já trouxe para a Entrada continuam lá.") != QMessageBox.Yes:
             return
-        if c:
-            c.parar()
+        c.parar()
         salvas = conexoes_salvas(self.cfg)
-        salvas[:] = [s for s in salvas if s.get("id") != ident]
+        salvas[:] = [s for s in salvas if s.get("id") != c.ident]
         self.cfg.save()
-        self.conexoes.pop(ident, None)
-        self.preencher_lista()
+        self.conexoes.pop(c.ident, None)
+        self.conexao = None
+        self.catalogo = None
+        self.por_chave.clear()
+        self.modelo.set_itens([])
+        self.arvore.clear()
+        self.detalhes.mostrar(None)
+        self.selo.setText("")
+        self.titulo.setText("Nuvem")
+        self.situacao.setText("")
+        restantes = conexoes_salvas(self.cfg)
+        if restantes:
+            self.abrir(restantes[0].get("id"))
+        else:
+            self._atualizar_seletor()
+
+    def mostrar_pagina(self):
+        """Chamado quando a aba Nuvem é aberta: na primeira vez entra na última biblioteca usada."""
+        if self._primeira:
+            self._primeira = False
+            salvas = conexoes_salvas(self.cfg)
+            if salvas:
+                ultima = self.cfg.values.get("nuvem_ultima")
+                ident = next((s.get("id") for s in salvas if s.get("id") == ultima), salvas[0].get("id"))
+                self.abrir(ident)
 
     def _conferir_conexoes(self):
         c = self.conexao
-        if c is None or c.motor is None or self.paginas.currentIndex() != 1:
+        if c is None or c.motor is None or not self.isVisible():
             return
         segundo_plano.run_async(c.motor.estado, self._estado_motor)
 
     def _estado_motor(self, e: dict):
         if e.get("estado") == "NeedsLogin" and e.get("url_login") and not getattr(self, "_login_aberto", False):
             self._login_aberto = True
-            r = QMessageBox.question(self, "Convite sem chave", "Este convite não trouxe a chave de acesso (ou ela "
+            r = QMessageBox.question(self.window(), "Convite sem chave", "Este convite não trouxe a chave de acesso (ou ela "
                                      "expirou), então este computador pediria uma conta do Tailscale.\n\n"
                                      "O mais simples: peça a quem compartilha um convite novo, criado depois de "
                                      "salvar a chave. Você não precisa de conta.\n\n"
@@ -600,7 +716,7 @@ class NuvemJanela(QMainWindow):
         else:
             e = getattr(self, "_ultimo_estado", None) or {"estado": "Sem resposta ainda"}   # atualizado a cada 4 s
         texto = nuvem_motor.relatorio(e, c.dados, "Passo atual: " + (c.etapa or "-") + "\nÚltimo erro ao abrir: " + (c.ultimo_erro or "-") + "\nSituação na tela: " + self.situacao.text())
-        d = QDialog(self)
+        d = QDialog(self.window())
         d.setWindowTitle("Diagnóstico da conexão")
         lay = QVBoxLayout(d)
         lay.setContentsMargins(20, 18, 20, 14)
@@ -643,80 +759,25 @@ class NuvemJanela(QMainWindow):
         d.exec()
 
     # ---------------------------------------------------------------- página 2: biblioteca remota
-    def _pagina_biblioteca(self) -> QWidget:
-        w = QWidget()
-        h = QHBoxLayout(w)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(0)
-        esq = QWidget()
-        esq.setFixedWidth(270)
-        el = QVBoxLayout(esq)
-        el.setContentsMargins(16, 28, 10, 16)
-        b = QPushButton("‹  Bibliotecas")
-        b.setProperty("flat", "true")
-        b.clicked.connect(self.fechar_biblioteca)
-        el.addWidget(b, 0, Qt.AlignLeft)
-        self.titulo = QLabel()
-        self.titulo.setStyleSheet("font-size:14pt;")
-        self.titulo.setWordWrap(True)
-        el.addWidget(self.titulo)
-        self.selo = QLabel("Nuvem · só leitura")
-        self.selo.setStyleSheet(f"color:{theme.LINK.name()}; font-size:9pt;")
-        el.addWidget(self.selo)
-        diag = QPushButton("Diagnóstico da conexão…")
-        diag.setProperty("flat", "true")
-        diag.clicked.connect(self.diagnostico)
-        el.addWidget(diag, 0, Qt.AlignLeft)
-        self.arvore = QTreeWidget()
-        self.arvore.setHeaderHidden(True)
-        self.arvore.setColumnCount(2)
-        self.arvore.setFrameShape(QFrame.NoFrame)
-        self.arvore.setStyleSheet("QTreeWidget{background:transparent;}")
-        self.arvore.itemSelectionChanged.connect(self._mudou_categoria)
-        el.addWidget(self.arvore, 1)
-        h.addWidget(esq)
-
-        centro = QWidget()
-        cl = QVBoxLayout(centro)
-        cl.setContentsMargins(24, 28, 16, 12)
-        cl.setSpacing(12)
-        self.busca = ui.SearchField("Buscar por nome, categoria ou tag")
-        self.busca.edit.textChanged.connect(lambda: self._busca_timer.start())
-        self._busca_timer = QTimer(self, singleShot=True, interval=180)
-        self._busca_timer.timeout.connect(self.filtrar)
-        cl.addWidget(self.busca)
-        self.situacao = QLabel()
-        self.situacao.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
-        cl.addWidget(self.situacao)
-        self.modelo = ItensModel(self)
-        self.grade = Grade(self)
-        self.grade.setModel(self.modelo)
-        self.grade.setItemDelegate(CartaoDelegate(self))
-        self.grade.selectionModel().currentChanged.connect(
-            lambda ix, _o: self.detalhes.mostrar(ix.data(Qt.UserRole) if ix.isValid() else None))
-        self.grade.doubleClicked.connect(lambda ix: self.baixar(ix.data(Qt.UserRole)))
-        cl.addWidget(self.grade, 1)
-        h.addWidget(centro, 1)
-
-        dir_ = QWidget()
-        dl = QVBoxLayout(dir_)
-        dl.setContentsMargins(8, 28, 24, 16)
-        self.detalhes = Detalhes(self)
-        dl.addWidget(self.detalhes)
-        h.addWidget(dir_)
-        return w
 
     def abrir(self, ident: str):
         c = self.conexoes.get(ident)
         if c is None:
-            return
+            d = next((s for s in conexoes_salvas(self.cfg) if s.get("id") == ident), None)
+            if d is None:
+                return
+            c = self.conexoes[ident] = Conexao(d)
         self.conexao = c
+        self.cfg.values["nuvem_ultima"] = ident
         self.catalogo = None
         self._minis.clear()
         self._grandes.clear()
         self._pedidas.clear()
+        self.por_chave.clear()
         self.titulo.setText(c.nome)
-        self.paginas.setCurrentIndex(1)
+        self.selo.setText("Nuvem · só leitura")
+        self._atualizar_seletor()
+        self.corpo.setCurrentIndex(1)
         salvo = c.remota_offline().catalogo_salvo()
         if salvo:
             self._mostrar_catalogo(salvo)
@@ -725,7 +786,10 @@ class NuvemJanela(QMainWindow):
         else:
             self.modelo.set_itens([])
             self.arvore.clear()
+            self.detalhes.mostrar(None)
             self.situacao.setText("Conectando… (a primeira vez pode levar alguns segundos)")
+        c.erro = ""
+        c._retentou = False
 
         def buscar():
             c.etapa = "Ligando o motor de rede"
@@ -752,7 +816,7 @@ class NuvemJanela(QMainWindow):
             self._mostrar_catalogo(cat)
             papel = info.get("papel") or "leitor"
             self.selo.setText(f"Nuvem · {papel}" + (" · só leitura" if papel == "leitor" else ""))
-            self.situacao.setText(f"Conectado · {len(cat.itens)} itens")
+            self.situacao.setText(f"Conectado · {len(cat.itens)} modelos")
 
         def erro(e):
             if self.conexao is not c:
@@ -765,39 +829,51 @@ class NuvemJanela(QMainWindow):
             elif isinstance(e, Desligada):
                 self.situacao.setText(("O computador da biblioteca está desligado ou com o Archiva fechado. "
                                        if salvo else "Não consegui conectar agora. ")
-                                      + "Os modelos já baixados continuam disponíveis.")
+                                      + "As prévias já vistas continuam disponíveis.")
             else:
                 self.situacao.setText(f"Erro ao conectar: {e}")
         segundo_plano.run_async(buscar, ok, erro)
 
-    def fechar_biblioteca(self):
-        self.paginas.setCurrentIndex(0)
-        self.preencher_lista()
-
+    # ---------------------------------------------------------------- catálogo, categorias e busca
     def _mostrar_catalogo(self, cat: Catalogo):
         sel = self._cat
         self.catalogo = cat
+        self.por_chave = {i.key: i for i in cat.itens}
+        capas: dict[str, ItemRemoto] = {}          # categoria -> modelo mais novo com prévia (para a miniatura)
+        for i in cat.itens:
+            if not i.tem_previa:
+                continue
+            partes = i.category.split("/")
+            for n in range(1, len(partes) + 1):
+                k = "/".join(partes[:n])
+                atual = capas.get(k)
+                if atual is None or i.added_time > atual.added_time:
+                    capas[k] = i
         self.arvore.blockSignals(True)
         self.arvore.clear()
-        todas = QTreeWidgetItem(["Todas as categorias", str(len(cat.itens))])
+        todas = QTreeWidgetItem(["Todas as categorias"])
         todas.setData(0, Qt.UserRole, ALL)
+        todas.setData(0, COUNT_ROLE, len(cat.itens))
+        todas.setData(0, COVER_ROLE, "*")
         self.arvore.addTopLevelItem(todas)
         alvo = todas
 
         def add(pai, c):
             nonlocal alvo
-            item = QTreeWidgetItem([c.name.capitalize(), str(c.quantidade)])
+            item = QTreeWidgetItem([c.name.capitalize()])
             item.setData(0, Qt.UserRole, c.key)
-            item.setForeground(1, theme.FAINT)
+            item.setData(0, COUNT_ROLE, c.quantidade)
+            if pai is None:
+                capa = capas.get(c.key)
+                item.setData(0, COVER_ROLE, capa.key if capa else None)
             if c.key == sel:
                 alvo = item
-            (pai.addChild(item) if pai else self.arvore.addTopLevelItem(item))
+            (pai.addChild(item) if pai is not None else self.arvore.addTopLevelItem(item))
             for s in sorted(c.children, key=lambda x: natural_key(x.name)):
                 add(item, s)
         for c in sorted(cat.categorias, key=lambda x: natural_key(x.name)):
             add(None, c)
-        self.arvore.resizeColumnToContents(1)
-        self.arvore.setColumnWidth(0, 200)
+        self.cat_count.setText(f"{len(cat.categorias)}")
         self.arvore.setCurrentItem(alvo)
         self.arvore.blockSignals(False)
         self._cat = alvo.data(0, Qt.UserRole)
@@ -805,7 +881,9 @@ class NuvemJanela(QMainWindow):
 
     def _mudou_categoria(self):
         it = self.arvore.currentItem()
-        self._cat = it.data(0, Qt.UserRole) if it else ALL
+        if it is None:
+            return
+        self._cat = it.data(0, Qt.UserRole) or ALL
         self.filtrar()
 
     def filtrar(self):
@@ -828,6 +906,22 @@ class NuvemJanela(QMainWindow):
                 if it.key == atual:
                     self.grade.setCurrentIndex(self.modelo.index(i))
                     break
+        else:
+            self.detalhes.mostrar(None)
+
+    def _mudou_selecao(self, *_a):
+        sel = self.grade.selectionModel().selectedIndexes()
+        if not sel:
+            self.detalhes.mostrar(None)
+            return
+        atual = self.grade.currentIndex()
+        ix = atual if atual.isValid() and atual in sel else sel[0]
+        self.detalhes.mostrar(ix.data(Qt.UserRole), len(sel))
+
+    def selecionados(self) -> list[ItemRemoto]:
+        itens = [ix.data(Qt.UserRole) for ix in sorted(self.grade.selectionModel().selectedIndexes(),
+                                                       key=lambda i: i.row())]
+        return itens
 
     # ---------------------------------------------------------------- prévias
     def miniatura(self, it: ItemRemoto) -> QPixmap | None:
@@ -849,7 +943,7 @@ class NuvemJanela(QMainWindow):
         marca = ("G" if destino is self._grandes else "") + it.key
         self._pedidas.add(marca)
 
-        def baixar():
+        def buscar():
             r = c.remota or c.remota_offline()
             try:
                 return r.previa(it, largura)
@@ -873,16 +967,43 @@ class NuvemJanela(QMainWindow):
             self._repintar.start()
             if self.detalhes.it is not None and self.detalhes.it.key == it.key:
                 self.detalhes.mostrar(it)
-        segundo_plano.run_async(baixar, pronto)
+        segundo_plano.run_async(buscar, pronto)
 
-    # ---------------------------------------------------------------- baixar e usar
+    def _espaco(self):
+        ix = self.grade.currentIndex()
+        if ix.isValid():
+            self.ampliar(ix.data(Qt.UserRole))
+
+    def ampliar(self, it: ItemRemoto | None):
+        """Espaço / clique na prévia: abre a prévia grande (a mesma janela da Biblioteca)."""
+        c = self.conexao
+        if it is None or c is None:
+            return
+        if not it.tem_previa:
+            self.situacao.setText(f"{it.name} não tem prévia.")
+            return
+
+        def buscar():
+            r = c.remota or c.remota_offline()
+            try:
+                return r.previa_arquivo(it, 1600)
+            except (Desligada, SemAcesso):
+                return None
+
+        def pronto(caminho):
+            if not caminho:
+                self.situacao.setText("Não consegui abrir a prévia agora (sem conexão).")
+                return
+            from .main_window import ImageViewer
+            ImageViewer(self.window(), caminho, it.name).exec()
+        segundo_plano.run_async(buscar, pronto)
+
+    # ---------------------------------------------------------------- copiar para a minha biblioteca
     def estado_item(self, it: ItemRemoto) -> str:
-        e = self.baixando.get(it.key)
+        e = self.copiando.get(it.key)
         if e:
             return e
-        if self.conexao and self.conexao.remota_offline().baixado(it):
-            return "pronto"
-        return "nuvem"
+        return "copiado" if it.key in self.copiado else "nuvem"
 
     def pct(self, it: ItemRemoto) -> str:
         feito, total = self.progresso.get(it.key, (0, 0))
@@ -890,12 +1011,68 @@ class NuvemJanela(QMainWindow):
             return f"{feito * 100 // max(total, 1)}%"
         return f"{feito / 1024 ** 2:.0f} MB" if feito else ""
 
-    def baixar(self, it: ItemRemoto | None):
-        if it is None or self.conexao is None or self.estado_item(it) != "nuvem":
+    def _menu_item(self, pos):
+        ix = self.grade.indexAt(pos)
+        if ix.isValid() and not self.grade.selectionModel().isSelected(ix):
+            self.grade.setCurrentIndex(ix)
+        m = self._montar_menu()
+        if m is not None:
+            m.exec(self.grade.viewport().mapToGlobal(pos))
+
+    def _montar_menu(self) -> QMenu | None:
+        itens = self.selecionados()
+        if not itens:
+            return None
+        m = QMenu(self)
+        n = len(itens)
+        a = m.addAction("Copiar para a minha biblioteca" if n == 1 else f"Copiar {n} modelos para a minha biblioteca")
+        a.triggered.connect(self.copiar_selecionados)
+        if n == 1:
+            v = m.addAction("Ampliar prévia   (Espaço)")
+            v.triggered.connect(lambda: self.ampliar(itens[0]))
+        if any(i.key in self.copiando for i in itens):
+            m.addSeparator()
+            m.addAction("Cancelar a cópia").triggered.connect(lambda: [self.cancelar(i) for i in itens])
+        return m
+
+    def _entrada(self) -> str | None:
+        raiz = self.cfg["library_root"]
+        if not raiz or not os.path.isdir(raiz):
+            QMessageBox.information(self.window(), "Copiar para a minha biblioteca",
+                                    "Escolha primeiro a sua biblioteca (pasta dos modelos) nas Configurações.")
+            return None
+        from . import intake
+        try:
+            return intake.entry_path(raiz)
+        except OSError as e:
+            QMessageBox.warning(self.window(), "Copiar para a minha biblioteca",
+                                f"Não consegui abrir a pasta Entrada:\\n{e}")
+            return None
+
+    def _proximo_numero(self) -> int:
+        n = int(self.cfg.values.get("nuvem_transferencias") or 0)
+        n = max([n] + list(self._reservados)) + 1
+        self._reservados.add(n)
+        return n
+
+    def copiar_selecionados(self):
+        itens = [i for i in self.selecionados() if self.estado_item(i) in ("nuvem", "copiado")]
+        if not itens or self.conexao is None:
             return
+        entrada = self._entrada()
+        if entrada is None:
+            return
+        for it in itens:
+            self.copiar(it, entrada)
+
+    def copiar(self, it: ItemRemoto, entrada: str):
         c = self.conexao
-        self.baixando[it.key] = "fila"
+        if c is None or it.key in self.copiando:
+            return
+        numero = self._proximo_numero()
+        self.copiando[it.key] = "fila"
         self.progresso[it.key] = (0, 0)
+        self._cancelar.discard(it.key)
         self._atualizar(it)
         ultimo = [0.0]
 
@@ -907,33 +1084,45 @@ class NuvemJanela(QMainWindow):
         def trabalho():
             r = c.preparar()
             segundo_plano.post(lambda _a: self._comecou(it))
-            return r.baixar(it, avisar, lambda: it.key in self._cancelar)
+            n = numero
+            while any(f.startswith(f"archiva_transfer_{n}.") for f in os.listdir(entrada)):
+                n += 1                                   # nunca sobrescreve o que já está na Entrada
+            return n, r.copiar_para_entrada(it, entrada, n, avisar, lambda: it.key in self._cancelar)
 
-        def ok(_pasta):
-            self.baixando.pop(it.key, None)
+        def ok(res):
+            n, base = res
+            self._reservados.discard(numero)
+            self.cfg.values["nuvem_transferencias"] = max(int(self.cfg.values.get("nuvem_transferencias") or 0), n)
+            self.cfg.save()
+            self.copiando.pop(it.key, None)
+            self.copiado[it.key] = base
             self._atualizar(it)
-            self.statusTip = f"{it.name} pronto"
+            self.w.statusBar().showMessage(f"{it.name} foi para a Entrada como {base}. Classifique na aba Entrada.",
+                                           8000)
+            if hasattr(self.w, "entrada"):
+                self.w.entrada.refresh()
 
         def falhou(e):
-            self.baixando.pop(it.key, None)
+            self._reservados.discard(numero)
+            self.copiando.pop(it.key, None)
             self._cancelar.discard(it.key)
             self._atualizar(it)
             if isinstance(e, InterruptedError):
                 return
-            from .extractor import PasswordError
-            if isinstance(e, PasswordError):
-                msg = (f"{it.name} está protegido por senha. Cadastre a senha em Configurações › Biblioteca "
-                       "› Ver / editar senhas e baixe de novo.")
-            elif isinstance(e, (Desligada, SemAcesso)):
+            if isinstance(e, (Desligada, SemAcesso)):
                 msg = str(e)
             else:
-                msg = f"Não consegui baixar {it.name}:\n{e}"
-            QMessageBox.warning(self, "Baixar", msg)
+                msg = f"Não consegui copiar {it.name}:\\n{e}"
+            QMessageBox.warning(self.window(), "Copiar para a minha biblioteca", msg)
         segundo_plano.run_async(trabalho, ok, falhou)
 
+    def cancelar(self, it: ItemRemoto):
+        if it.key in self.copiando:
+            self._cancelar.add(it.key)
+
     def _comecou(self, it):
-        if it.key in self.baixando:
-            self.baixando[it.key] = "baixando"
+        if it.key in self.copiando:
+            self.copiando[it.key] = "copiando"
             self._atualizar(it)
 
     def _progresso(self, it, feito, total):
@@ -945,150 +1134,14 @@ class NuvemJanela(QMainWindow):
         if self.detalhes.it is not None and self.detalhes.it.key == it.key:
             self.detalhes.atualizar_estado()
 
-    def caminho_para_arrastar(self, it: ItemRemoto, max_file: str | None = None) -> str | None:
-        pasta = self.conexao.remota_offline().baixado(it) if self.conexao else None
-        if not pasta:
-            self.situacao.setText(f"{it.name} ainda não está neste computador. Clique em Baixar (ou dois cliques).")
-            return None
-        principal, maxes, dirs = max_do_item(pasta)
-        mx = max_file or principal
-        if not mx:
-            self.situacao.setText(f"{it.name}: nenhum arquivo .max dentro do que foi baixado.")
-            return None
-        from . import max_startup
-        max_startup.write_handoff(it.name, mx, dirs)   # o script do Max religa as texturas depois do Merge
-        return mx
+    # ---------------------------------------------------------------- ciclo de vida
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.mostrar_pagina()
 
-    def abrir_pasta(self, it: ItemRemoto):
-        pasta = self.conexao.remota_offline().baixado(it) if self.conexao else None
-        if pasta:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta)))
-
-    def apagar_copia(self, it: ItemRemoto):
-        if not self.conexao:
-            return
-        if QMessageBox.question(self, "Tirar do PC", f"Apagar a cópia de {it.name} baixada neste computador?\n\n"
-                                "A biblioteca de origem não muda; dá para baixar de novo.") != QMessageBox.Yes:
-            return
-        self.conexao.remota_offline().apagar_copia(it)
-        self._atualizar(it)
-
-    def closeEvent(self, e):
-        for k in list(self.baixando):
+    def encerrar(self):
+        """Ao fechar o programa: para as cópias em andamento e desliga os motores de rede."""
+        for k in list(self.copiando):
             self._cancelar.add(k)
         for c in self.conexoes.values():
             c.parar()
-        super().closeEvent(e)
-
-
-# =========================================================================== tela inicial (Local × Nuvem)
-
-class OpcaoCartao(QFrame):
-    clicado = Signal()
-
-    def __init__(self, icone: str, titulo: str, sub: str, nota: str):
-        super().__init__()
-        self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(170)
-        self._hover = False
-        l = QVBoxLayout(self)
-        l.setContentsMargins(22, 20, 22, 18)
-        l.setSpacing(4)
-        ic = QLabel()
-        ic.setPixmap(ui.icon_pixmap(icone, theme.LINK, 24, 1.7))
-        l.addWidget(ic)
-        l.addSpacing(8)
-        t = QLabel(titulo)
-        t.setStyleSheet("font-size:13pt; background:transparent;")
-        l.addWidget(t)
-        self.sub = QLabel(sub)
-        self.sub.setStyleSheet(f"color:{theme.MUTED.name()}; background:transparent;")
-        l.addWidget(self.sub)
-        l.addStretch(1)
-        self.nota = QLabel(nota)
-        self.nota.setWordWrap(True)
-        self.nota.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:9pt; background:transparent;")
-        l.addWidget(self.nota)
-
-    def enterEvent(self, e):
-        self._hover = True
-        self.update()
-
-    def leaveEvent(self, e):
-        self._hover = False
-        self.update()
-
-    def mouseReleaseEvent(self, e):
-        if e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
-            self.clicado.emit()
-
-    def paintEvent(self, e):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        theme.paint_glass(p, QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 1.0, self._hover)
-        if self._hover:
-            theme.paint_selection(p, QRectF(self.rect()).adjusted(1, 1, -1, -1), 12)
-
-
-class Escolha(QWidget):
-    """Tela inicial da 2.0: abrir a biblioteca deste computador ou uma da Nuvem."""
-    local = Signal()
-    nuvem = Signal()
-
-    def __init__(self, cfg: Config):
-        super().__init__()
-        self.setWindowTitle(APP_NAME)
-        self.setMinimumSize(760, 460)
-        self.resize(820, 500)
-        l = QVBoxLayout(self)
-        l.setContentsMargins(40, 34, 40, 34)
-        l.setSpacing(6)
-        topo = QHBoxLayout()
-        logo = ui.LogoMark()
-        logo.setFixedWidth(170)
-        topo.addWidget(logo)
-        topo.addStretch(1)
-        from . import perfil
-        p = perfil.load() or {}
-        v = QLabel(f"versão {version()}" + (f" · {p.get('nome')}" if p.get("nome") else ""))
-        v.setStyleSheet(f"color:{theme.FAINT.name()};")
-        topo.addWidget(v, 0, Qt.AlignTop)
-        l.addLayout(topo)
-        l.addSpacing(10)
-        t = QLabel("Onde você quer abrir?")
-        t.setStyleSheet("font-size:16pt;")
-        l.addWidget(t)
-        s = QLabel("Escolha a biblioteca deste computador ou uma compartilhada com você.")
-        s.setStyleSheet(f"color:{theme.MUTED.name()};")
-        l.addWidget(s)
-        l.addSpacing(16)
-        h = QHBoxLayout()
-        h.setSpacing(16)
-        raiz = cfg["library_root"] or "nenhuma pasta escolhida"
-        nuvem = cfg.values.get("nuvem") or {}
-        nota_local = "Tudo liberado: classificar, organizar, Entrada"
-        if nuvem.get("compartilhar"):
-            ativos = len([c for c in nuvem.get("convidados", []) if not c.get("revogado")])
-            nota_local = f"Compartilhando com {ativos} pessoa(s) enquanto estiver aberto"
-        a = OpcaoCartao("computador", "Neste computador", raiz, nota_local)
-        a.clicado.connect(self.local.emit)
-        n = len(cfg.values.get("nuvem_bibliotecas") or [])
-        b = OpcaoCartao("nuvem", "Nuvem",
-                        f"{n} biblioteca(s) disponível(is)" if n else "Entrar com um convite",
-                        "Ver, buscar, baixar e levar para o Max")
-        b.clicado.connect(self.nuvem.emit)
-        h.addWidget(a)
-        h.addWidget(b)
-        l.addLayout(h)
-        l.addStretch(1)
-
-    def paintEvent(self, e):
-        p = QPainter(self)
-        theme.paint_background(p, QRectF(self.rect()))
-
-
-def mostrar_escolha(cfg: Config) -> bool:
-    """A tela inicial aparece para quem já usa a Nuvem (tem biblioteca salva). Quem nunca usou abre direto na
-    biblioteca local, como antes; a Nuvem fica no menu lateral."""
-    return bool(cfg.values.get("nuvem_bibliotecas"))
-

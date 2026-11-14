@@ -2,6 +2,14 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.7
+- **A Nuvem agora é uma aba da própria Biblioteca.** Acabou a tela inicial "Local ou Nuvem": o Archiva abre como sempre e, no menu lateral, **Nuvem** mostra a biblioteca online (use a seta ▾ no alto para trocar de biblioteca, entrar com um convite, ver o diagnóstico ou remover).
+- **Mesmo visual da Biblioteca:** categorias com miniatura e subpastas, cartões, painel de detalhes com prévia grande, busca e controle do tamanho dos cartões.
+- **Espaço amplia a prévia**, como na Biblioteca (também clique na prévia ou dois cliques no cartão).
+- **Copiar para a minha biblioteca** (botão direito no modelo, ou o botão do painel; dá para selecionar vários): o arquivo e a prévia vão para a pasta **Entrada** com o nome `archiva_transfer_N`, e depois você classifica na aba Entrada como qualquer download. Nada é sobrescrito: se o número já existe, usa o próximo.
+- **Removido:** arrastar direto para o 3ds Max e o "Baixar/Tirar do PC" da Nuvem. O caminho agora é copiar para a sua biblioteca e usar a Biblioteca normal.
+- Tutoriais da Nuvem em Aprender atualizados.
+
 ## 2.0.6
 - **Tutoriais da Nuvem em Aprender.** Dois tutoriais novos, no grupo **Biblioteca na Nuvem**, cada um com animação das telas reais:
   - **Acessar uma biblioteca da Nuvem** (para quem recebe o convite): abrir Nuvem, colar a linha ARCHIVA2-…, esperar a primeira conexão, baixar e arrastar para o 3ds Max.

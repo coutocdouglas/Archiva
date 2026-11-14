@@ -211,12 +211,10 @@ salvar("nuvem_compartilhar", [
 # ------------------------------------------------------------------ quem acessa
 d0 = ler_convite(convite)
 conv_local = criar_convite(d0["h"], d0["k"], d0["n"], local=f"127.0.0.1:{w.nuvem.servidor.porta}")
-w.abrir_nuvem()
-nj = w.nuvem_janela
-nj.resize(1040, 640)
-nj.show()
+w.tabs.setCurrentWidget(w.nuvem_page)          # 2.0.7: a Nuvem é uma aba da janela principal
+nj = w.nuvem_page
 esperar(lambda: False, 0.4)
-acc1 = nj.grab()
+acc1 = w.grab()
 # caixa do convite (a captura mostra o convite colado)
 _texto_convite = convite
 
@@ -251,22 +249,44 @@ esperar(lambda: nj.catalogo is not None and not nj.catalogo.do_cache, 25)
 nj.grade.setCurrentIndex(nj.modelo.index(0))
 esperar(lambda: len(nj._minis) >= 8, 15)
 app.processEvents()
-acc3 = nj.grab()
+acc3 = w.grab()
 it = nj.modelo.itens[0]
-nj.baixar(it)
-esperar(lambda: nj.estado_item(it) == "pronto", 30)
+# botão direito: captura o menu e o põe sobre a janela
+from PySide6.QtWidgets import QMenu  # noqa: E402
+from PySide6.QtGui import QPixmap  # noqa: E402
+pos = nj.grade.visualRect(nj.modelo.index(0)).center()
+_m = nj._montar_menu()
+_m.adjustSize()
+_m.show()
+QTest.qWait(150)
+_menus = [_m.grab()]
+_m.hide()
+base = w.grab()
+if _menus:
+    p = QPainter(base)
+    destino = nj.grade.viewport().mapTo(w, pos)
+    p.setPen(QPen(QColor(255, 230, 200, 70), 1))
+    p.setBrush(QColor(30, 22, 17))
+    mw, mh = _menus[0].width(), _menus[0].height()
+    p.drawRoundedRect(destino.x(), destino.y(), mw, mh, 6, 6)
+    p.drawPixmap(destino.x(), destino.y(), _menus[0])
+    p.end()
+acc4 = base
+nj.copiar_selecionados()
+esperar(lambda: nj.estado_item(it) == "copiado", 30)
 nj.grade.setCurrentIndex(nj.modelo.index(0))
 nj.detalhes.mostrar(it)
 app.processEvents()
 esperar(lambda: False, 0.3)
-acc4 = nj.grab()
+acc5 = w.grab()
 
 OND_B = "No computador de quem vai acessar"
 salvar("nuvem_acessar", [
     cena(acc1, 1, OND_B, "No menu lateral, abra Nuvem › Entrar com um convite…"),
     cena(acc2, 2, OND_B, "Cole a linha ARCHIVA2-… que você recebeu e clique em Entrar"),
-    cena(acc3, 3, OND_B, "A biblioteca abre (na primeira vez a conexão pode levar até um minuto)"),
-    cena(acc4, 4, OND_B, "Baixe o modelo e arraste o cartão para o 3ds Max"),
+    cena(acc3, 3, OND_B, "A biblioteca abre (na primeira vez a conexão pode levar até um minuto). Espaço amplia a prévia"),
+    cena(acc4, 4, OND_B, "Botão direito no modelo › Copiar para a minha biblioteca"),
+    cena(acc5, 5, OND_B, "Ele vai para a Entrada como archiva_transfer_N, pronto para classificar"),
 ])
 w.nuvem.parar_ao_fechar()
 os._exit(0)

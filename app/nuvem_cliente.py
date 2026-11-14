@@ -227,6 +227,14 @@ class Remota:
             pass
         return dados
 
+    def previa_arquivo(self, it: ItemRemoto, largura: int = 1600) -> str | None:
+        """Caminho de uma prévia grande já guardada neste PC (busca na rede se ainda não tem)."""
+        if self.previa(it, largura) is None:
+            return None
+        nome = hashlib.sha1(f"{it.key}|{it.previa_mtime}|{largura}".encode("utf-8")).hexdigest() + ".jpg"
+        arq = self.pasta / "previas" / nome[:2] / nome
+        return str(arq) if arq.exists() else None
+
     # ---------------------------------------------------------------- modelos baixados
     def pasta_item(self, it: ItemRemoto) -> Path:
         partes = [_seguro(p) for p in it.key.split("/") if p]
@@ -236,12 +244,11 @@ class Remota:
         p = self.pasta_item(it)
         return p if (p / ".pronto").exists() else None
 
-    def baixar(self, it: ItemRemoto, progresso=None, cancelado=None) -> Path:
-        """Baixa (continuando de onde parou, se a conexão cair) e deixa a pasta pronta para arrastar.
+    def _trazer(self, it: ItemRemoto, progresso=None, cancelado=None) -> tuple[Path, str, str]:
+        """Baixa o arquivo do modelo para a pasta temporária (continua de onde parou se a conexão cair).
 
-        progresso(baixados, total); cancelado() -> True para parar. Devolve a pasta do item.
+        Devolve (arquivo, tipo, nome). progresso(baixados, total); cancelado() -> True para parar.
         """
-        destino = self.pasta_item(it)
         temp = self.pasta / "baixando"
         temp.mkdir(parents=True, exist_ok=True)
         parcial = temp / (hashlib.sha1(it.key.encode("utf-8")).hexdigest() + ".parte")
@@ -278,7 +285,61 @@ class Remota:
                 if tentativas > 4:
                     raise
                 time.sleep(2 * tentativas)
-        return self._preparar(it, parcial, tipo, nome, destino)
+        return parcial, tipo, nome
+
+    def baixar(self, it: ItemRemoto, progresso=None, cancelado=None) -> Path:
+        """Baixa e deixa a pasta pronta (extraída) em nuvem\\<id>\\modelos. Devolve a pasta do item."""
+        parcial, tipo, nome = self._trazer(it, progresso, cancelado)
+        return self._preparar(it, parcial, tipo, nome, self.pasta_item(it))
+
+    def copiar_para_entrada(self, it: ItemRemoto, entrada: str, numero: int, progresso=None, cancelado=None) -> str:
+        """Copia o modelo (arquivo + prévia) para a pasta _ENTRADA da biblioteca desta pessoa.
+
+        Os arquivos ganham o nome `archiva_transfer_<numero>` e depois são classificados na Entrada como qualquer
+        download. Nada é sobrescrito; o arquivo só aparece completo (o último passo é renomear). Devolve o nome base.
+        """
+        base = f"archiva_transfer_{numero}"
+        parcial, tipo, _nome = self._trazer(it, progresso, cancelado)
+        ext = "max" if tipo == "max" else ("zip" if tipo in ("zip", "pasta-zip") else (tipo or "rar"))
+        destino = os.path.join(entrada, f"{base}.{ext}")
+        temporarios: list[str] = []
+        try:
+            if os.path.exists(destino) or any(f.startswith(base + ".") for f in os.listdir(entrada)):
+                raise FileExistsError(f"{base} já existe na Entrada")
+            tmp_arq = destino + ".parte"
+            temporarios.append(tmp_arq)
+            shutil.move(str(parcial), tmp_arq)               # do disco local para a Entrada (pode ser a rede)
+            if it.tem_previa:
+                try:
+                    with self._pedir(f"/api/previa?k={quote(it.key)}", tempo=60) as r:
+                        nome_prev = unquote(r.headers.get("X-Archiva-Nome", "") or "")
+                        dados = r.read()
+                    ext_prev = os.path.splitext(nome_prev)[1].lower() or ".jpg"
+                    if ext_prev not in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+                        ext_prev = ".jpg"
+                    prev = os.path.join(entrada, base + ext_prev)
+                    tmp_prev = prev + ".parte"
+                    temporarios.append(tmp_prev)
+                    with open(tmp_prev, "wb") as f:
+                        f.write(dados)
+                    os.replace(tmp_prev, prev)
+                    temporarios.remove(tmp_prev)
+                except (Desligada, SemAcesso, OSError):
+                    pass                                      # sem prévia: o modelo ainda vai para a Entrada
+            os.replace(tmp_arq, destino)                      # por último: o item aparece completo
+            temporarios.remove(tmp_arq)
+        finally:
+            for t in temporarios:
+                try:
+                    os.remove(t)
+                except OSError:
+                    pass
+            if os.path.exists(str(parcial)):
+                try:
+                    os.remove(str(parcial))
+                except OSError:
+                    pass
+        return base
 
     def _preparar(self, it: ItemRemoto, arquivo: Path, tipo: str, nome: str, destino: Path) -> Path:
         from . import extractor

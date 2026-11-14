@@ -1105,7 +1105,6 @@ class MainWindow(FramelessMixin, QMainWindow):
 
         from .nuvem_host import Compartilhamento
         self.nuvem = Compartilhamento(self)       # 2.0: compartilhar esta biblioteca pela Nuvem
-        self.nuvem_janela = None
 
         self._restore_state()
         QTimer.singleShot(0, self.start_scan)
@@ -1323,6 +1322,9 @@ class MainWindow(FramelessMixin, QMainWindow):
             and self.sidebar.buttons["organizacao"].set_badge(n))
         self._dup_timer = QTimer(self, singleShot=True)
         self._dup_timer.timeout.connect(self._scan_dups)
+        from .nuvem_janela import NuvemPage
+        self.nuvem_page = NuvemPage(self)          # 2.0.7: a Nuvem é uma página, com o visual da Biblioteca
+        self.tabs.add(self.nuvem_page, "nuvem", "Nuvem")
         self.aprender = tutoriais.AprenderPage(self)
         self.aprender.open_tutorial.connect(self.show_tutorial)
         self.tabs.add(self.aprender, "aprender", "Aprender")
@@ -1331,7 +1333,6 @@ class MainWindow(FramelessMixin, QMainWindow):
                                    ("entrada", "Entrada", "entrada"), ("organizacao", "Organização", "organizar"),
                                    ("nuvem", "Nuvem", "nuvem"), ("aprender", "Aprender", "aprender")])
         self.sidebar.navigate.connect(self._navegar)
-        self.sidebar.buttons["nuvem"].setCheckable(False)
         # soltar cartões em "Coleções" no menu lateral: escolhe a coleção num menu
         self._col_drop = self.sidebar.buttons["colecoes"]
         self._col_drop.setAcceptDrops(True)
@@ -1516,8 +1517,8 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.entrada.shutdown()
         self.shared.unbind()
         self.nuvem.parar_ao_fechar()
-        if self.nuvem_janela is not None:
-            self.nuvem_janela.close()
+        if self.nuvem_page is not None:
+            self.nuvem_page.encerrar()
         super().closeEvent(e)
 
     # ----------------------------------------------------------------- leitura
@@ -2627,21 +2628,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.data_rev += 1
 
     def _navegar(self, k: str):
-        if k == "nuvem":
-            self.abrir_nuvem()
-            return
         self.tabs.setCurrentWidget(self.tabs.page(k))
-
-    def abrir_nuvem(self):
-        """Bibliotecas de outros computadores (janela própria; esta continua aberta e compartilhando)."""
-        from .nuvem_janela import NuvemJanela
-        if self.nuvem_janela is None:
-            self.nuvem_janela = NuvemJanela(self.cfg)
-            self.nuvem_janela.b_voltar_inicio.setText("‹  Fechar")
-            self.nuvem_janela.voltar.connect(self.nuvem_janela.close)
-        self.nuvem_janela.show()
-        self.nuvem_janela.raise_()
-        self.nuvem_janela.activateWindow()
 
     def compartilhar_nuvem(self, parent=None):
         from .nuvem_host import CompartilharDialog

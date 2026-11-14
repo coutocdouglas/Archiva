@@ -61,43 +61,8 @@ def main():
         else:
             _ligar_abertura(w, abertura)
 
-    from app.config import Config
-    from app.nuvem_janela import mostrar_escolha
-    if mostrar_escolha(Config()):
-        _abrir_escolha(app, abrir_local)
-    else:
-        abrir_local()
+    abrir_local()
     sys.exit(app.exec())
-
-
-def _abrir_escolha(app, abrir_local):
-    """2.0: tela inicial com Local × Nuvem (só para quem já tem biblioteca da Nuvem salva)."""
-    from app.config import Config
-    from app.nuvem_janela import Escolha, NuvemJanela
-
-    cfg = Config()
-    esc = Escolha(cfg)
-    app._escolha = esc
-
-    def local():
-        esc.hide()
-        abrir_local()
-        esc.deleteLater()
-
-    def nuvem():
-        esc.hide()
-        j = NuvemJanela(cfg)
-        app._nuvem = j
-
-        def voltar():
-            j.close()
-            esc.show()
-        j.voltar.connect(voltar)
-        j.show()
-
-    esc.local.connect(local)
-    esc.nuvem.connect(nuvem)
-    esc.show()
 
 
 def _abrir_abertura():
