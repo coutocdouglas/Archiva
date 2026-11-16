@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.11
+- **Busca por imagem simplificada.** Em Propriedades › Origem, o botão agora é **Buscar por imagem no Google** (todas as páginas que o Google achar para a prévia). A opção focada no Design Connected foi escondida por enquanto, até ser afinada; a busca pelo código do 3DSKY continua como está.
+
 ## 2.0.10
 - **Origem pelo código do 3DSKY.** O arquivo baixado do 3DSKY tem como nome um código (como `9332998.6af59838593cc`). Em **Propriedades › Origem**, o botão **Buscar pelo código** procura esse código no site, abre a página do modelo e só dá como certo se o mesmo código aparecer nas imagens dela. Preenche nome original, link, código e autor; você confere e salva. O botão aparece nos blocos cujo nome original a Entrada guardou (a maioria dos que você classificou pelo Archiva).
 - **Em lote.** Selecione vários blocos (Ctrl+A na categoria) › botão direito › **Preencher origem pelo código guardado…**: o Archiva procura um por um, devagar, mostra a lista (achado e conferido / conferir à mão / não achado) e só grava os conferidos quando você clicar em Gravar. Se o 3DSKY recusar os pedidos, ele para sozinho.

@@ -42,6 +42,9 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
 MAX_PAGE = 3 * 1024 * 1024
 MAX_IMG = 3 * 1024 * 1024
 LOTE_PAUSA = 1.5               # segundos entre um pedido e outro no lote (sem sobrecarregar o site)
+# A busca por imagem focada no Design Connected existe, mas fica escondida até ser afinada (o Google costuma devolver
+# cópias do modelo em outros sites, e o título das páginas do Design Connected traz "3d model by Design Connected").
+MOSTRAR_DESIGN_CONNECTED = False
 
 # "8765287.69ff9ae40ba89" (número da imagem + sufixo), como aparece no fim do endereço da imagem
 CODE_RE = re.compile(r"(\d{3,}\.[0-9a-f]{6,})", re.I)
@@ -441,20 +444,24 @@ class PropriedadesDialog(QDialog):
             self.btn_cod.clicked.connect(self._buscar_codigo)
             self.btn_cod.setVisible(bool(self._codigo))
             busca.addWidget(self.btn_cod)
-            self.btn_img = QPushButton("Buscar por imagem  ▾")
+            self.btn_img = QPushButton("Buscar por imagem no Google")
             self.btn_img.setToolTip("Procura no Google a página que tem a prévia deste bloco (usa a chave da Google "
                                     "Cloud Vision; cada busca conta na cota).")
-            menu = QMenu(self.btn_img)
-            menu.addAction("Google · Design Connected", lambda: self._buscar_imagem("designconnected.com"))
-            menu.addAction("Google · geral", lambda: self._buscar_imagem(None))
-            self.btn_img.setMenu(menu)
+            if MOSTRAR_DESIGN_CONNECTED:
+                self.btn_img.setText("Buscar por imagem  ▾")
+                menu = QMenu(self.btn_img)
+                menu.addAction("Google · Design Connected", lambda: self._buscar_imagem("designconnected.com"))
+                menu.addAction("Google · geral", lambda: self._buscar_imagem(None))
+                self.btn_img.setMenu(menu)
+            else:
+                self.btn_img.clicked.connect(lambda: self._buscar_imagem(None))
             self.btn_img.setEnabled(bool(a.preview))
             busca.addWidget(self.btn_img)
             busca.addStretch(1)
             root.addLayout(busca)
             carga = QHBoxLayout()
             self.link_in = QLineEdit()
-            self.link_in.setPlaceholderText("Ou cole o link da página (3DSKY, Design Connected…) ou da imagem do 3DSKY")
+            self.link_in.setPlaceholderText("Ou cole o link da página do modelo (3DSKY ou outro site) ou da imagem do 3DSKY")
             self.link_in.returnPressed.connect(self._carregar)
             carga.addWidget(self.link_in, 1)
             self.btn_load = QPushButton("Carregar")
