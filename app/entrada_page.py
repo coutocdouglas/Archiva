@@ -638,7 +638,7 @@ class EntradaPage(QWidget):
         fresh, fresh_scope = fresh_scan()
         added, replaced, discarded, errors = [], [], 0, list(busy_items)
         cuida_origem = origem.pode_editar(self.w)
-        auto_origem: list[tuple[str, str]] = []   # (chave na biblioteca, código do 3DSKY) a procurar depois
+        auto_origem: list[tuple[str, str, str]] = []   # (chave, código do 3DSKY, prévia a criar se o bloco não tem) depois
         com_origem: list[str] = []                # chaves que já ganharam a ficha escolhida na Entrada
         changed: list[str] = []          # itens da biblioteca que mudaram (a tela relê só eles)
         for a in sel:
@@ -690,7 +690,8 @@ class EntradaPage(QWidget):
                         self.w.db.set_origin(f"{c.key}/{name}", ficha)
                         com_origem.append(f"{c.key}/{name}")
                     elif cuida_origem and self.chk_origem.isChecked() and origem.codigo_do_nome(a.name):
-                        auto_origem.append((f"{c.key}/{name}", origem.codigo_do_nome(a.name)))
+                        auto_origem.append((f"{c.key}/{name}", origem.codigo_do_nome(a.name),
+                                            "" if a.preview else os.path.join(c.path, name + ".jpg")))
                     self.w.log_op("classificar", c.key, f"{c.key}/{name}", f"{a.name} → {name}", r.pairs)
                     fresh, fresh_scope = fresh_scan()
                     if r.left_behind:

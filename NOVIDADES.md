@@ -2,6 +2,10 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.13
+- **Prévia vinda do 3DSKY.** Se o bloco não tem imagem e o Archiva acha o modelo no 3DSKY pelo código, a imagem principal da página vira a prévia do bloco (`NOME.jpg` ao lado dele). Na Entrada isso é automático quando o código confere com a página; em **Propriedades** aparece a caixa "Usar a imagem da página como prévia deste bloco" (marcada quando o código confere; nos outros casos você marca depois de conferir a imagem); no **lote** também. Nunca substitui uma prévia que já existe.
+- **O atalho da Área de Trabalho não muda mais de lugar.** O instalador só cria o atalho se ele ainda não existir; atualizar não o recria. (Ao instalar esta versão ele ainda pode se mexer uma última vez.)
+
 ## 2.0.12
 - **Origem na Entrada.** Ao classificar um bloco cujo nome de arquivo é um código do 3DSKY (como `9332998.6af59838593cc`), o Archiva procura o modelo no site sozinho, em segundo plano (a classificação não espera pela internet), e grava a origem só quando o código confere com a página. Os que não conferem ficam sem origem, para você ver em Propriedades. A barra de baixo mostra quantos foram preenchidos.
 - **Origem… no painel da Entrada.** Para blocos sem código, selecione um e clique em **Origem…**: busca por imagem no Google ou link da página, você confere e a ficha vai junto quando o bloco for classificado. É opcional.

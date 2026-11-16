@@ -13,6 +13,8 @@
     segundo plano (a classificação não espera pela rede) e grava a ficha só quando o código confere com a página. Sem
     código no nome, o painel da Entrada tem "Origem…" (busca por imagem ou link, você confere); a ficha escolhida vai
     junto quando o bloco é classificado. A origem nunca é obrigatória.
+  - **Prévia:** se o bloco não tem imagem e a página foi encontrada (Entrada: só quando o código confere), a imagem
+    principal da página vira a prévia do bloco (`NOME.jpg` ao lado dele; nunca substitui uma prévia existente).
   - A ficha fica no banco da equipe (_ARCHIVA), como as tags: acompanha renomear/mover/excluir/desfazer
     (`move_item_data`) e vai com a biblioteca. Nenhum arquivo é gravado nas pastas dos blocos.
   - A busca da Biblioteca acha por nome original, link, código (inteiro ou só o número), autor e site.
@@ -31,7 +33,7 @@ from urllib.parse import quote, urlparse
 
 from PySide6.QtCore import QThread, QUrl, Qt, Signal
 from PySide6.QtGui import QDesktopServices, QImage, QImageReader, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFormLayout, QFrame, QHBoxLayout, QHeaderView, QLabel,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QFormLayout, QFrame, QHBoxLayout, QHeaderView, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton,
                                QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
@@ -67,6 +69,58 @@ class SemResultado(OSError):
 def pode_editar(w) -> bool:
     """Só o administrador (ou o modo local, sem servidor) grava a origem."""
     return bool(w.is_admin() or w.shared.lib is None)
+
+
+def previa_destino(a: Asset) -> str:
+    """Onde ficaria a prévia de um bloco que não tem (`NOME.jpg` ao lado do arquivo ou da pasta do bloco, como as
+    outras prévias da biblioteca). Vazio se já tem prévia, se não há arquivo ou se o destino já existe."""
+    if a.preview or not a.members:
+        return ""
+    m = a.members[0]
+    stem = os.path.basename(m) if os.path.isdir(m) else os.path.splitext(os.path.basename(m))[0]
+    dest = os.path.join(os.path.dirname(m), stem + ".jpg")
+    return "" if os.path.exists(dest) else dest
+
+
+def salvar_previa(dados: bytes | None, destino: str) -> bool:
+    """Grava a imagem da página como prévia (JPG). Nunca substitui um arquivo que já existe. Roda num ajudante."""
+    if not dados or not destino or os.path.exists(destino):
+        return False
+    img = QImage.fromData(dados)
+    if img.isNull():
+        return False
+    tmp = os.path.join(os.path.dirname(destino), "." + os.path.basename(destino) + ".tmp")
+    try:
+        if not img.convertToFormat(QImage.Format_RGB32).save(tmp, "JPG", 92):
+            return False
+        if os.path.exists(destino):
+            os.remove(tmp)
+            return False
+        os.replace(tmp, destino)
+        return True
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
+
+
+def gravar_previas(w, itens: list[tuple[str, str, bytes]], depois=None) -> None:
+    """itens = [(chave do bloco, caminho da prévia, imagem)]. Grava num ajudante e atualiza a tela dos blocos que
+    ganharam prévia; depois(chaves) volta na janela."""
+    if not itens:
+        return
+
+    def trabalho():
+        return [k for k, dest, dados in itens if salvar_previa(dados, dest)]
+
+    def fim(chaves):
+        for top in {k.split("/")[0] for k in chaves}:
+            w.refresh_category(top, [k for k in chaves if k.split("/")[0] == top])
+        if depois:
+            depois(chaves)
+    segundo_plano.run_async(trabalho, fim, lambda e: depois and depois([]))
 
 
 def fonte_de(url: str) -> str:
@@ -382,6 +436,8 @@ class PropriedadesDialog(QDialog):
         self.w, self.a = w, a
         self.ao_salvar = ao_salvar
         self.can_edit = pode_editar(w)
+        self._img_bytes: bytes | None = None
+        self._previa_dest = previa_destino(a) if (pode_editar(w) and not ao_salvar) else ""
         self._open = True
         self._old = ficha if ao_salvar else w.db.origin(a.key)
         self._fonte = (self._old or {}).get("fonte", "")
@@ -527,6 +583,9 @@ class PropriedadesDialog(QDialog):
         self.pic_pg.setVisible(False)
         orow.addWidget(self.pic_pg, 0, Qt.AlignTop)
         root.addLayout(orow)
+        self.chk_previa = QCheckBox("Usar a imagem da página como prévia deste bloco (ele ainda não tem prévia)")
+        self.chk_previa.setVisible(False)
+        root.addWidget(self.chk_previa)
         if o.get("registrado_em"):
             r = QLabel(f"Origem registrada em {o['registrado_em']}")
             r.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:8.5pt;")
@@ -603,12 +662,18 @@ class PropriedadesDialog(QDialog):
         self._fonte = info.get("fonte") or self._fonte
         self.lb_fonte.setText(FONTES.get(self._fonte, "—"))
         img = info.get("imagem")
+        self._img_bytes = None
+        self.chk_previa.setVisible(False)
         if img:
             qi = QImage.fromData(img)
             if not qi.isNull():
                 self.pic_pg.setPixmap(QPixmap.fromImage(qi).scaled(166, 166, Qt.KeepAspectRatio,
                                                                   Qt.SmoothTransformation))
                 self.pic_pg.setVisible(True)
+                if self._previa_dest:
+                    self._img_bytes = img
+                    self.chk_previa.setChecked(bool(info.get("validado")))   # sem conferência do código, você marca
+                    self.chk_previa.setVisible(True)
                 return
         self.pic_pg.setVisible(False)
 
@@ -743,6 +808,12 @@ class PropriedadesDialog(QDialog):
             return
         self.w.db.set_origin(self.a.key, ficha)
         self.w._rebuild_search_text([self.a])
+        if self.chk_previa.isVisibleTo(self) and self.chk_previa.isChecked() and self._img_bytes and self._previa_dest:
+            self._ocupado(True)
+            self._dizer("Gravando a prévia…")
+            gravar_previas(self.w, [(self.a.key, self._previa_dest, self._img_bytes)],
+                           lambda _chaves: self.accept() if self._open else None)
+            return
         self.accept()
 
     def _remover(self):
@@ -867,7 +938,7 @@ class LoteDialog(QDialog):
                             "não são gravados aqui: abra Propriedades do bloco para ver a página.")
 
     def _gravar(self):
-        gravados = []
+        gravados, previas = [], []
         for i, d in self.res.items():
             if not d.get("_ok"):
                 continue
@@ -877,9 +948,15 @@ class LoteDialog(QDialog):
             self.w.db.set_origin(a.key, make_ficha(None, d["url"], d.get("nome_original", ""),
                                                    d["codigo_imagem"], d.get("autor", ""), "3dsky"))
             gravados.append(a)
+            dest = previa_destino(a)
+            if dest and d.get("imagem"):
+                previas.append((a.key, dest, d["imagem"]))
         if gravados:
             self.w._rebuild_search_text(gravados)
-        QMessageBox.information(self, "Origem", f"{len(gravados)} bloco(s) com a origem gravada.")
+        gravar_previas(self.w, previas)
+        QMessageBox.information(self, "Origem", f"{len(gravados)} bloco(s) com a origem gravada."
+                                + (f"\n{len(previas)} bloco(s) sem prévia vão receber a imagem da página." if previas
+                                   else ""))
         self.accept()
 
     def _limpar(self, *_):
@@ -893,11 +970,11 @@ def preencher_em_lote(w, assets: list[Asset]) -> None:
 
 # --------------------------------------------------------------------------- ao classificar na Entrada
 
-def _buscar_varios(itens: list[tuple[str, str]], avisar) -> list[tuple[str, str, object]]:
-    """(chave, código) → [(chave, estado, dado)]; estado: ok | conferir | nao | erro. Roda num ajudante: um pedido por
+def _buscar_varios(itens: list[tuple[str, str, str]], avisar) -> list[tuple[str, str, object]]:
+    """(chave, código, prévia) → [(chave, estado, dado)]; estado: ok | conferir | nao | erro. Roda num ajudante: um pedido por
     vez, com pausa, e para sozinho se o site recusar (403/429)."""
     out: list[tuple[str, str, object]] = []
-    for i, (key, cod) in enumerate(itens):
+    for i, (key, cod, _previa) in enumerate(itens):
         segundo_plano.post(avisar, f"Procurando a origem no 3DSKY… ({i + 1}/{len(itens)})")
         try:
             info = buscar_por_codigo(cod)
@@ -921,10 +998,10 @@ def refazer_busca(w, keys) -> None:
         w._rebuild_search_text([a for a in w.all_assets if a.key in keys])
 
 
-def preencher_apos_classificar(w, itens: list[tuple[str, str]], prefixo: str = "") -> None:
+def preencher_apos_classificar(w, itens: list[tuple[str, str, str]], prefixo: str = "") -> None:
     """Blocos recém-classificados cujo nome de arquivo era um código do 3DSKY: procura cada um no site (em segundo
     plano) e grava a ficha dos que o código confere com a página. Os demais ficam sem origem, para conferir depois em
-    Propriedades. `itens` = [(chave do bloco na biblioteca, código)]; `prefixo` = texto que já estava na barra."""
+    Propriedades. `itens` = [(chave do bloco na biblioteca, código, caminho da prévia a criar ou "")]; `prefixo` = texto que já estava na barra."""
     if not itens:
         return
     pre = (prefixo + "  ·  ") if prefixo else ""
@@ -935,17 +1012,23 @@ def preencher_apos_classificar(w, itens: list[tuple[str, str]], prefixo: str = "
 
     def fim(res):
         vivos = {a.key for a in w.all_assets}
-        gravados = []
+        destinos = {k: p for k, _c, p in itens}
+        gravados, previas = [], []
         for key, estado, d in res:
             if estado == "ok" and key in vivos and not w.db.origin(key):
                 w.db.set_origin(key, make_ficha(None, d["url"], d.get("nome_original", ""), d["codigo_imagem"],
                                                 d.get("autor", ""), "3dsky"))
                 gravados.append(key)
+                if destinos.get(key) and d.get("imagem"):       # bloco sem prévia: usa a imagem da página
+                    previas.append((key, destinos[key], d["imagem"]))
         refazer_busca(w, gravados)
+        gravar_previas(w, previas)
         sobra = len(itens) - len(gravados)
         txt = f"origem preenchida em {len(gravados)} de {len(itens)} bloco(s) pelo código do 3DSKY"
         if sobra:
             txt += f"; {sobra} sem origem (veja em Propriedades)"
+        if previas:
+            txt += f"; {len(previas)} prévia(s) criada(s) a partir da página"
         if any(e == "erro" and ("429" in str(d) or "403" in str(d)) for _k, e, d in res):
             txt += "; o 3DSKY recusou os pedidos, tente mais tarde"
         bar.showMessage(pre + txt, 15000)

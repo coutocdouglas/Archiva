@@ -48,8 +48,9 @@ Type: filesandordirs; Name: "{app}\_internal"
 Source: "..\dist\Archiva\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
+; o atalho da Área de Trabalho só é criado se ainda não existir: atualizar não o recria nem tira do lugar
 Name: "{autoprograms}\Archiva"; Filename: "{app}\Archiva.exe"; AppUserModelID: "TILD.Archiva"
-Name: "{autodesktop}\Archiva"; Filename: "{app}\Archiva.exe"; AppUserModelID: "TILD.Archiva"; Tasks: desktopicon
+Name: "{autodesktop}\Archiva"; Filename: "{app}\Archiva.exe"; AppUserModelID: "TILD.Archiva"; Tasks: desktopicon; Flags: onlyifdoesntexist
 
 [Run]
 ; instalação normal: oferece abrir no final
