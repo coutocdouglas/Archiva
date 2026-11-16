@@ -67,6 +67,7 @@ DEFAULTS = {
     "tutorial_off": False,        # boas-vindas ao abrir desligadas
     "abertura_off": False,        # tela de abertura (logo animada) desligada
     "tutoriais_vistos": [],
+    "entrada_buscar_origem": True,  # 2.0.12: ao classificar, procura sozinho no 3DSKY quando o nome do arquivo é um código
     "versao_vista": "",           # última versão aberta (para mostrar as novidades)
     "nuvem": {},                  # 2.0: compartilhar esta biblioteca (nome, convidados com a chave só em hash)
     "nuvem_bibliotecas": [],      # 2.0: bibliotecas de outros computadores (convites aceitos neste PC)

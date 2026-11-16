@@ -9,6 +9,10 @@
     e salva. O Design Connected não tem código: só imagem.
   - **Link:** colar o link da página (3DSKY ou outro site) ou o da imagem do 3DSKY e clicar em Carregar.
   - Em lote: botão direito em vários blocos › "Preencher origem pelo código guardado…" (lista de conferência).
+  - **Na Entrada:** ao classificar, se o nome do arquivo for um código do 3DSKY o Archiva procura o modelo sozinho, em
+    segundo plano (a classificação não espera pela rede) e grava a ficha só quando o código confere com a página. Sem
+    código no nome, o painel da Entrada tem "Origem…" (busca por imagem ou link, você confere); a ficha escolhida vai
+    junto quando o bloco é classificado. A origem nunca é obrigatória.
   - A ficha fica no banco da equipe (_ARCHIVA), como as tags: acompanha renomear/mover/excluir/desfazer
     (`move_item_data`) e vai com a biblioteca. Nenhum arquivo é gravado nas pastas dos blocos.
   - A busca da Biblioteca acha por nome original, link, código (inteiro ou só o número), autor e site.
@@ -59,6 +63,11 @@ class SemResultado(OSError):
 
 
 # --------------------------------------------------------------------------- reconhecer o que foi colado
+
+def pode_editar(w) -> bool:
+    """Só o administrador (ou o modo local, sem servidor) grava a origem."""
+    return bool(w.is_admin() or w.shared.lib is None)
+
 
 def fonte_de(url: str) -> str:
     """'3dsky', 'designconnected' ou 'outro' (vazio se não for um endereço)."""
@@ -366,15 +375,18 @@ def _ler_disco(a: Asset) -> tuple[QImage | None, str, str]:
 
 
 class PropriedadesDialog(QDialog):
-    def __init__(self, w, a: Asset):
+    def __init__(self, w, a: Asset, ficha: dict | None = None, ao_salvar=None):
+        """`ao_salvar` (modo Entrada): o bloco ainda não tem lugar na biblioteca; em vez de gravar no banco, a ficha
+        confirmada é entregue a ao_salvar(ficha) (ou ao_salvar(None) para limpar) e gravada quando ele for classificado."""
         super().__init__(w)
         self.w, self.a = w, a
-        self.can_edit = bool(w.is_admin() or w.shared.lib is None)
+        self.ao_salvar = ao_salvar
+        self.can_edit = pode_editar(w)
         self._open = True
-        self._old = w.db.origin(a.key)
+        self._old = ficha if ao_salvar else w.db.origin(a.key)
         self._fonte = (self._old or {}).get("fonte", "")
         self._codigo = codigo_guardado(w, a)
-        self.setWindowTitle(f"Propriedades · {a.name}")
+        self.setWindowTitle(("Origem · " if ao_salvar else "Propriedades · ") + a.name)
         self.setMinimumWidth(780)
         self.resize(800, 720)
         outer = QVBoxLayout(self)
@@ -417,7 +429,7 @@ class PropriedadesDialog(QDialog):
         nomes = {c["id"]: c["name"] for c in w.db.collections(None)}
         cols = [nomes[c] for c in w.db.collections_of(a.key) if c in nomes]
         row("nome", "Nome na biblioteca", a.name)
-        row("cat", "Categoria", a.category.replace("/", " › "))
+        row("cat", "Categoria", "Entrada (ainda sem categoria)" if ao_salvar else a.category.replace("/", " › "))
         row("tipo", "Tipo", _tipo_texto(a))
         row("arq", "Tamanho do arquivo", "lendo…" if a.kind in ("archive", "max") else "—")
         row("prev", "Prévia", "lendo…" if a.preview else "sem prévia")
@@ -724,13 +736,22 @@ class PropriedadesDialog(QDialog):
         if cod and not CODE_RE.fullmatch(cod):
             self._dizer("O código tem o formato 8765287.69ff9ae40ba89 (número, ponto e letras/números).", theme.WARN)
             return
-        self.w.db.set_origin(self.a.key, make_ficha(self._old, url, nome, cod, autor, self._fonte or None))
+        ficha = make_ficha(self._old, url, nome, cod, autor, self._fonte or None)
+        if self.ao_salvar:
+            self.ao_salvar(ficha)
+            self.accept()
+            return
+        self.w.db.set_origin(self.a.key, ficha)
         self.w._rebuild_search_text([self.a])
         self.accept()
 
     def _remover(self):
         if QMessageBox.question(self, "Remover origem", f"Apagar os dados de origem de {self.a.name}?") \
                 != QMessageBox.Yes:
+            return
+        if self.ao_salvar:
+            self.ao_salvar(None)
+            self.accept()
             return
         self.w.db.set_origin(self.a.key, None)
         self.w._rebuild_search_text([self.a])
@@ -868,3 +889,69 @@ class LoteDialog(QDialog):
 
 def preencher_em_lote(w, assets: list[Asset]) -> None:
     LoteDialog(w, assets).exec()
+
+
+# --------------------------------------------------------------------------- ao classificar na Entrada
+
+def _buscar_varios(itens: list[tuple[str, str]], avisar) -> list[tuple[str, str, object]]:
+    """(chave, código) → [(chave, estado, dado)]; estado: ok | conferir | nao | erro. Roda num ajudante: um pedido por
+    vez, com pausa, e para sozinho se o site recusar (403/429)."""
+    out: list[tuple[str, str, object]] = []
+    for i, (key, cod) in enumerate(itens):
+        segundo_plano.post(avisar, f"Procurando a origem no 3DSKY… ({i + 1}/{len(itens)})")
+        try:
+            info = buscar_por_codigo(cod)
+        except SemResultado as e:
+            out.append((key, "nao", str(e)))
+        except OSError as e:
+            out.append((key, "erro", str(e)))
+            if "429" in str(e) or "403" in str(e):
+                break
+        else:
+            out.append((key, "ok" if info.get("validado") else "conferir", info))
+        if i < len(itens) - 1:
+            time.sleep(LOTE_PAUSA)
+    return out
+
+
+def refazer_busca(w, keys) -> None:
+    """Atualiza o texto de busca dos itens (a origem entra na busca da Biblioteca)."""
+    keys = set(keys)
+    if keys:
+        w._rebuild_search_text([a for a in w.all_assets if a.key in keys])
+
+
+def preencher_apos_classificar(w, itens: list[tuple[str, str]], prefixo: str = "") -> None:
+    """Blocos recém-classificados cujo nome de arquivo era um código do 3DSKY: procura cada um no site (em segundo
+    plano) e grava a ficha dos que o código confere com a página. Os demais ficam sem origem, para conferir depois em
+    Propriedades. `itens` = [(chave do bloco na biblioteca, código)]; `prefixo` = texto que já estava na barra."""
+    if not itens:
+        return
+    pre = (prefixo + "  ·  ") if prefixo else ""
+    bar = w.statusBar()
+
+    def avisar(txt):
+        bar.showMessage(pre + txt, 0)
+
+    def fim(res):
+        vivos = {a.key for a in w.all_assets}
+        gravados = []
+        for key, estado, d in res:
+            if estado == "ok" and key in vivos and not w.db.origin(key):
+                w.db.set_origin(key, make_ficha(None, d["url"], d.get("nome_original", ""), d["codigo_imagem"],
+                                                d.get("autor", ""), "3dsky"))
+                gravados.append(key)
+        refazer_busca(w, gravados)
+        sobra = len(itens) - len(gravados)
+        txt = f"origem preenchida em {len(gravados)} de {len(itens)} bloco(s) pelo código do 3DSKY"
+        if sobra:
+            txt += f"; {sobra} sem origem (veja em Propriedades)"
+        if any(e == "erro" and ("429" in str(d) or "403" in str(d)) for _k, e, d in res):
+            txt += "; o 3DSKY recusou os pedidos, tente mais tarde"
+        bar.showMessage(pre + txt, 15000)
+
+    def erro(e):
+        bar.showMessage(pre + f"não consegui procurar a origem agora ({e})", 15000)
+
+    avisar(f"Procurando a origem no 3DSKY… (0/{len(itens)})")
+    segundo_plano.run_async(lambda: _buscar_varios(itens, avisar), fim, erro)

@@ -6,11 +6,11 @@ import subprocess
 
 from PySide6.QtCore import QFileSystemWatcher, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QKeySequence, QPixmap, QShortcut
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QCompleter, QDialog, QDialogButtonBox, QHBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QCompleter, QDialog, QDialogButtonBox, QHBoxLayout,
                                QLabel, QListView, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                                QRadioButton, QButtonGroup, QSplitter, QVBoxLayout, QWidget, QFrame, QApplication)
 
-from . import intake
+from . import intake, origem
 from . import theme, ui
 from .janela import TITLE_H
 from .scanner import Asset, Category, scan_category
@@ -137,6 +137,7 @@ class EntradaPage(QWidget):
         self.items: list[Asset] = []
         self.similar: dict[tuple[str, str], list] = {}   # (item_key, cat_key) -> matches
         self._threads: set[SimilarThread] = set()
+        self.origem_pend: dict[str, dict] = {}           # chave do item da Entrada -> ficha de origem confirmada
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -254,6 +255,30 @@ class EntradaPage(QWidget):
         self.dup_status.setStyleSheet(f"color:{theme.MUTED.name()};")
         self.dup_status.setWordWrap(True)
         pl.addWidget(self.dup_status)
+
+        self.box_origem = QWidget()
+        ol = QVBoxLayout(self.box_origem)
+        ol.setContentsMargins(0, 0, 0, 0)
+        ol.setSpacing(6)
+        ol.addWidget(self._heading("Origem do modelo (opcional)"))
+        self.origem_info = QLabel()
+        self.origem_info.setStyleSheet(f"color:{theme.MUTED.name()};")
+        self.origem_info.setWordWrap(True)
+        ol.addWidget(self.origem_info)
+        orow = QHBoxLayout()
+        self.btn_origem = QPushButton("Origem…")
+        self.btn_origem.setToolTip("Busca por imagem no Google ou cola o link da página do modelo; você confere e a "
+                                   "ficha vai junto quando o bloco for classificado.")
+        self.btn_origem.clicked.connect(self._escolher_origem)
+        orow.addWidget(self.btn_origem)
+        orow.addStretch(1)
+        ol.addLayout(orow)
+        self.chk_origem = QCheckBox("Procurar sozinho no 3DSKY quando o nome for um código")
+        self.chk_origem.setChecked(bool(self.w.cfg["entrada_buscar_origem"]))
+        self.chk_origem.toggled.connect(self._on_chk_origem)
+        ol.addWidget(self.chk_origem)
+        self.box_origem.setVisible(origem.pode_editar(window))
+        pl.addWidget(self.box_origem)
 
         self.btn = ui.primary(QPushButton("Classificar  (Enter)"))
         self.btn.setMinimumHeight(42)
@@ -415,6 +440,7 @@ class EntradaPage(QWidget):
             self.new_name.setText("")
             self.dups.clear()
             self.dup_status.setText("")
+            self._update_origem()
             return
         if len(sel) == 1:
             a = sel[0]
@@ -443,6 +469,56 @@ class EntradaPage(QWidget):
         else:
             self.new_name.setText("<span style='color:#a89c8c'>Escolha a categoria acima.</span>")
         self.btn_prefix.setVisible(c is not None)
+        self._update_origem()
+
+    # ----------------------------------------------------------------- origem (opcional)
+    def _on_chk_origem(self, on: bool):
+        self.w.cfg["entrada_buscar_origem"] = bool(on)
+        self._update_origem()
+
+    def _update_origem(self):
+        if not origem.pode_editar(self.w):
+            return
+        sel = [a for a in self.selected() if a.kind != "missing"]
+        auto = self.chk_origem.isChecked()
+        self.btn_origem.setVisible(len(sel) == 1)
+        if not sel:
+            self.origem_info.setText("")
+            return
+        if len(sel) > 1:
+            n = sum(1 for a in sel if origem.codigo_do_nome(a.name))
+            self.origem_info.setText(
+                (f"{n} de {len(sel)} vêm com código do 3DSKY no nome: serão procurados ao classificar."
+                 if auto else "A busca automática pelo código está desligada.")
+                if n else "Nenhum deles tem código do 3DSKY no nome. Para registrar a origem, selecione um por vez.")
+            return
+        a = sel[0]
+        pend, cod = self.origem_pend.get(a.key), origem.codigo_do_nome(a.name)
+        self.btn_origem.setText("Mudar origem…" if pend else "Origem…")
+        if pend:
+            self.origem_info.setText("Origem escolhida: <b>" + (pend.get("nome_original") or pend.get("url", ""))
+                                     + "</b>. Vai junto quando o bloco for classificado.")
+        elif cod:
+            self.origem_info.setText(f"O nome é um código do 3DSKY ({cod}): " + (
+                "o modelo será procurado sozinho ao classificar." if auto else
+                "a busca automática está desligada; use Origem… se quiser."))
+        else:
+            self.origem_info.setText("O nome não é um código do 3DSKY. Se quiser registrar a origem, use Origem… "
+                                     "(busca por imagem ou link). Não é obrigatório.")
+
+    def _escolher_origem(self):
+        sel = [a for a in self.selected() if a.kind != "missing"]
+        if len(sel) != 1:
+            return
+        a = sel[0]
+
+        def guardar(ficha):
+            if ficha:
+                self.origem_pend[a.key] = ficha
+            else:
+                self.origem_pend.pop(a.key, None)
+            self._update_origem()
+        origem.PropriedadesDialog(self.w, a, self.origem_pend.get(a.key), guardar).exec()
 
     def _check_similar(self):
         self.dups.clear()
@@ -561,6 +637,9 @@ class EntradaPage(QWidget):
 
         fresh, fresh_scope = fresh_scan()
         added, replaced, discarded, errors = [], [], 0, list(busy_items)
+        cuida_origem = origem.pode_editar(self.w)
+        auto_origem: list[tuple[str, str]] = []   # (chave na biblioteca, código do 3DSKY) a procurar depois
+        com_origem: list[str] = []                # chaves que já ganharam a ficha escolhida na Entrada
         changed: list[str] = []          # itens da biblioteca que mudaram (a tela relê só eles)
         for a in sel:
             matches = self.similar.get((a.key, c.key)) or []
@@ -576,6 +655,7 @@ class EntradaPage(QWidget):
                 if choice == DuplicateDialog.KEEP_OLD:
                     rec = []
                     intake.discard(a, root, rec)
+                    self.origem_pend.pop(a.key, None)
                     self.w.log_op("descartar", "_ENTRADA", a.key, f"{a.name} (repetido de item da biblioteca)", rec)
                     discarded += 1
                     continue
@@ -589,6 +669,10 @@ class EntradaPage(QWidget):
                         replaced.append(name)
                         changed.append(existing.key)
                         self.w.db.add_addition(existing.key, a.name)
+                        ficha = self.origem_pend.pop(a.key, None)
+                        if ficha and cuida_origem:
+                            self.w.db.set_origin(existing.key, ficha)
+                            com_origem.append(existing.key)
                         self.w.log_op("substituir", c.key, existing.key, f"{name} pela versão nova ({a.name})",
                                       rec + r.pairs)
                     else:
@@ -601,6 +685,12 @@ class EntradaPage(QWidget):
                     added.append(name)
                     changed.append(f"{c.key}/{name}")
                     self.w.db.add_addition(f"{c.key}/{name}", a.name)
+                    ficha = self.origem_pend.pop(a.key, None)
+                    if cuida_origem and ficha:
+                        self.w.db.set_origin(f"{c.key}/{name}", ficha)
+                        com_origem.append(f"{c.key}/{name}")
+                    elif cuida_origem and self.chk_origem.isChecked() and origem.codigo_do_nome(a.name):
+                        auto_origem.append((f"{c.key}/{name}", origem.codigo_do_nome(a.name)))
                     self.w.log_op("classificar", c.key, f"{c.key}/{name}", f"{a.name} → {name}", r.pairs)
                     fresh, fresh_scope = fresh_scan()
                     if r.left_behind:
@@ -620,7 +710,10 @@ class EntradaPage(QWidget):
             parts.append(f"{len(replaced)} substituído(s): " + ", ".join(replaced))
         if discarded:
             parts.append(f"{discarded} descartado(s)")
-        self.w.statusBar().showMessage("  ·  ".join(parts) or "Nada foi classificado.", 12000)
+        resumo = "  ·  ".join(parts) or "Nada foi classificado."
+        self.w.statusBar().showMessage(resumo, 12000)
+        origem.refazer_busca(self.w, com_origem)
+        origem.preencher_apos_classificar(self.w, auto_origem, resumo)   # em segundo plano; não atrasa nada
         if errors:
             QMessageBox.warning(self, "Entrada", "Alguns itens tiveram problema:\n\n" + "\n".join(errors))
 

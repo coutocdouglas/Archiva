@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.12
+- **Origem na Entrada.** Ao classificar um bloco cujo nome de arquivo é um código do 3DSKY (como `9332998.6af59838593cc`), o Archiva procura o modelo no site sozinho, em segundo plano (a classificação não espera pela internet), e grava a origem só quando o código confere com a página. Os que não conferem ficam sem origem, para você ver em Propriedades. A barra de baixo mostra quantos foram preenchidos.
+- **Origem… no painel da Entrada.** Para blocos sem código, selecione um e clique em **Origem…**: busca por imagem no Google ou link da página, você confere e a ficha vai junto quando o bloco for classificado. É opcional.
+- Há uma caixa para desligar a busca automática pelo código. A forma de classificar e numerar os blocos não mudou. Só o administrador registra a origem.
+
 ## 2.0.11
 - **Busca por imagem simplificada.** Em Propriedades › Origem, o botão agora é **Buscar por imagem no Google** (todas as páginas que o Google achar para a prévia). A opção focada no Design Connected foi escondida por enquanto, até ser afinada; a busca pelo código do 3DSKY continua como está.
 
