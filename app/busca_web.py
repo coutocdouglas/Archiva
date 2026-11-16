@@ -63,8 +63,8 @@ def _encode_preview(path: str) -> bytes:
     return bytes(ba)
 
 
-def web_detection(key: str, image: bytes) -> list[str]:
-    """Endereços de imagens na ordem de preferência: iguais, parciais, parecidas."""
+def _annotate(key: str, image: bytes) -> dict:
+    """Chama a Cloud Vision (Web Detection) e devolve o bloco webDetection da resposta."""
     body = json.dumps({"requests": [{
         "image": {"content": base64.b64encode(image).decode("ascii")},
         "features": [{"type": "WEB_DETECTION", "maxResults": 40}]}]}).encode("utf-8")
@@ -83,7 +83,28 @@ def web_detection(key: str, image: bytes) -> list[str]:
     res = (data.get("responses") or [{}])[0]
     if res.get("error"):
         raise OSError(res["error"].get("message", "erro na busca"))
-    wd = res.get("webDetection") or {}
+    return res.get("webDetection") or {}
+
+
+def web_pages(key: str, image: bytes) -> list[dict]:
+    """Páginas da web que contêm a imagem: [{"url", "titulo", "completa"}] (completa = imagem igual na página)."""
+    import html
+    import re
+    wd = _annotate(key, image)
+    out, seen = [], set()
+    for p in wd.get("pagesWithMatchingImages") or []:
+        u = p.get("url")
+        if not u or not u.startswith("http") or u in seen:
+            continue
+        seen.add(u)
+        titulo = re.sub(r"<[^>]+>", "", html.unescape(p.get("pageTitle") or "")).strip()
+        out.append({"url": u, "titulo": titulo, "completa": bool(p.get("fullMatchingImages"))})
+    return out
+
+
+def web_detection(key: str, image: bytes) -> list[str]:
+    """Endereços de imagens na ordem de preferência: iguais, parciais, parecidas."""
+    wd = _annotate(key, image)
     urls: list[str] = []
 
     def add(lst):

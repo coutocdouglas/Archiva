@@ -2839,9 +2839,13 @@ class MainWindow(FramelessMixin, QMainWindow):
             m.addSeparator()
             m.addAction(f"Excluir {len(sel)} itens…" if len(sel) > 1 else "Excluir item…",
                         lambda: self.delete_assets(sel))
+        if self.is_admin() or self.shared.lib is None:
+            com_codigo = [x for x in sel if not self.db.origin(x.key) and origem.codigo_guardado(self, x)]
+            if com_codigo:
+                m.addAction(f"Preencher origem pelo código guardado ({len(com_codigo)})…",
+                            lambda: origem.preencher_em_lote(self, com_codigo))
         if len(sel) == 1:
             m.addSeparator()
-            from . import origem
             m.addAction("Propriedades…", lambda: origem.open_properties(self, a))
         m.exec(self.grid.viewport().mapToGlobal(pos))
 

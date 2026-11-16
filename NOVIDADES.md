@@ -2,6 +2,13 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.10
+- **Origem pelo código do 3DSKY.** O arquivo baixado do 3DSKY tem como nome um código (como `9332998.6af59838593cc`). Em **Propriedades › Origem**, o botão **Buscar pelo código** procura esse código no site, abre a página do modelo e só dá como certo se o mesmo código aparecer nas imagens dela. Preenche nome original, link, código e autor; você confere e salva. O botão aparece nos blocos cujo nome original a Entrada guardou (a maioria dos que você classificou pelo Archiva).
+- **Em lote.** Selecione vários blocos (Ctrl+A na categoria) › botão direito › **Preencher origem pelo código guardado…**: o Archiva procura um por um, devagar, mostra a lista (achado e conferido / conferir à mão / não achado) e só grava os conferidos quando você clicar em Gravar. Se o 3DSKY recusar os pedidos, ele para sozinho.
+- **Buscar por imagem.** Para blocos sem código (Design Connected e outros sites): **Buscar por imagem › Google · Design Connected** (só páginas desse site) ou **Google · geral**. Usa a mesma chave da Google Cloud Vision da busca de prévias. Você escolhe a página, e a imagem dela aparece ao lado da prévia para conferir antes de salvar.
+- **Outros sites.** Colar o link da página de qualquer site agora também funciona (lê nome e imagem); a ficha guarda o site (3DSKY, Design Connected ou outro).
+- A janela Propriedades agora rola quando a tela é pequena, com os botões sempre à vista.
+
 ## 2.0.9
 - **Propriedades do bloco.** Botão direito no modelo › **Propriedades…** mostra o que o Archiva já sabe do item (nome, categoria, tipo, tamanho do arquivo, prévia, variações, data, tags e coleções) e a seção **Origem · 3DSKY**.
 - **Origem do 3DSKY.** Cole o link da página (ou o da imagem) do modelo no 3dsky.org e clique em **Carregar**: o Archiva lê a página e preenche o **nome original**, o **link**, o **código da primeira imagem** (ex.: 8765287.69ff9ae40ba89) e o **autor**. Confira e salve. Se o site não responder, o link fica preenchido e você completa o nome e o código à mão.

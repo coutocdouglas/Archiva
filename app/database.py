@@ -356,6 +356,11 @@ class TagDB:
             self.conn.execute("INSERT OR REPLACE INTO additions(item_key, added_at, original_name) VALUES(?, ?, ?)",
                               (item_key, when or self._time(), original_name))
 
+    def original_name_of(self, item_key: str) -> str:
+        """Nome do download como chegou na Entrada (para o 3DSKY, o código; ex.: 9332998.6af59838593cc)."""
+        r = self.conn.execute("SELECT original_name FROM additions WHERE item_key = ?", (item_key,)).fetchone()
+        return (r[0] or "") if r else ""
+
     def recent_additions(self, limit: int = 30) -> list[tuple[str, float, str]]:
         return self.conn.execute("SELECT item_key, added_at, original_name FROM additions "
                                  "ORDER BY added_at DESC LIMIT ?", (limit,)).fetchall()
