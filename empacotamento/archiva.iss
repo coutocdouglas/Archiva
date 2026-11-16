@@ -48,9 +48,9 @@ Type: filesandordirs; Name: "{app}\_internal"
 Source: "..\dist\Archiva\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-; o atalho da Área de Trabalho só é criado se ainda não existir: atualizar não o recria nem tira do lugar
+; o atalho da Área de Trabalho só é criado se ainda não existir (Check abaixo): atualizar não o recria nem tira do lugar
 Name: "{autoprograms}\Archiva"; Filename: "{app}\Archiva.exe"; AppUserModelID: "TILD.Archiva"
-Name: "{autodesktop}\Archiva"; Filename: "{app}\Archiva.exe"; AppUserModelID: "TILD.Archiva"; Tasks: desktopicon; Flags: onlyifdoesntexist
+Name: "{autodesktop}\Archiva"; Filename: "{app}\Archiva.exe"; AppUserModelID: "TILD.Archiva"; Tasks: desktopicon; Check: AtalhoDesktopNaoExiste
 
 [Run]
 ; instalação normal: oferece abrir no final
@@ -65,4 +65,10 @@ begin
   if WizardSilent then
     Sleep(1500);
   Result := True;
+end;
+
+// Atalho já existente na Área de Trabalho: não mexe nele (assim o ícone não sai do lugar que a pessoa escolheu).
+function AtalhoDesktopNaoExiste(): Boolean;
+begin
+  Result := not FileExists(ExpandConstant('{autodesktop}\Archiva.lnk'));
 end;
