@@ -1307,6 +1307,9 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.home = HomePage(self)
         self.tabs.add(self.home, "inicio", "Início")
         self.tabs.add(self.splitter, "biblioteca", "Biblioteca")
+        from .vegetacao.pagina import VegetacaoPage     # aba Vegetação (módulo novo, isolado)
+        self.vegetacao = VegetacaoPage(self)
+        self.tabs.add(self.vegetacao, "vegetacao", "Vegetação")
         self.tags_page = TagsPage(self)
         self.tabs.add(self.tags_page, "tags", "Tags")
         from .colecoes_page import ColecoesPage
@@ -1329,6 +1332,7 @@ class MainWindow(FramelessMixin, QMainWindow):
         self.aprender.open_tutorial.connect(self.show_tutorial)
         self.tabs.add(self.aprender, "aprender", "Aprender")
         self.sidebar = ui.Sidebar([("inicio", "Início", "inicio"), ("biblioteca", "Biblioteca", "biblioteca"),
+                                   ("vegetacao", "Vegetação", "vegetacao"),
                                    ("tags", "Tags", "tags"), ("colecoes", "Coleções", "colecoes"),
                                    ("entrada", "Entrada", "entrada"), ("organizacao", "Organização", "organizar"),
                                    ("nuvem", "Nuvem", "nuvem"), ("aprender", "Aprender", "aprender")])

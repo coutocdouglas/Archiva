@@ -10,6 +10,8 @@ Coleções (Globe Plants, Maxtree) → Volumes → Espécies → Arquivos (todas
 
 Primeira página: barra de busca por espécie em todas as coleções, faixa de Favoritos e cartões das coleções.
 
+As coleções **nunca são procuradas automaticamente**: cada pessoa indica a pasta raiz de cada uma (Maxtree, Globe Plants) em "Adicionar coleção", porque nem todo mundo organiza a biblioteca assim. A lista fica em `%APPDATA%\GerenciadorAssets3D\vegetacao.json`; "Tirar da Vegetação" só esquece a pasta, não apaga nada.
+
 ## Padrão de leitura
 - Acha todos os .max da coleção, recursivamente, e liga cada um à prévia. index.xml é a fonte principal (.max ↔ jpg ↔ objeto ↔ material); casamento por nome é o plano B.
 - Funciona por conteúdo, não por posição de pasta (há pastas aninhadas em dobro; Vol 130 só tem .rar, mostrado como "compactado").
