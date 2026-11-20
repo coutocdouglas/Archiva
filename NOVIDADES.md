@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.14
+- **Nuvem: bolinha de online/offline.** Cada biblioteca da Nuvem mostra uma bolinha **verde (online)** ou **vermelha (offline)**, na lista de bibliotecas, logo abaixo do nome da biblioteca aberta e no menu da seta ▾. Online quer dizer que o computador da biblioteca está ligado, com o Archiva aberto e respondendo; offline, que ele está desligado, sem internet, com o Archiva fechado ou que o convite foi revogado (passe o mouse na bolinha para ver). Cinza = verificando. A conferência é automática, a cada 20 s, e a lista na tela avisa quando a conexão cai ou volta.
+
 ## 2.0.13
 - **Prévia vinda do 3DSKY.** Se o bloco não tem imagem e o Archiva acha o modelo no 3DSKY pelo código, a imagem principal da página vira a prévia do bloco (`NOME.jpg` ao lado dele). Na Entrada isso é automático quando o código confere com a página; em **Propriedades** aparece a caixa "Usar a imagem da página como prévia deste bloco" (marcada quando o código confere; nos outros casos você marca depois de conferir a imagem); no **lote** também. Nunca substitui uma prévia que já existe.
 - **O atalho da Área de Trabalho não muda mais de lugar.** O instalador só cria o atalho se ele ainda não existir; atualizar não o recria. (Ao instalar esta versão ele ainda pode se mexer uma última vez.)

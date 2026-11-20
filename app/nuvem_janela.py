@@ -8,11 +8,12 @@ Tudo que passa pela internet roda em ajudantes (segundo_plano); a janela nunca e
 from __future__ import annotations
 
 import os
+import threading
 import time
 from types import SimpleNamespace
 
 from PySide6.QtCore import (QAbstractListModel, QModelIndex, QPoint, QRectF, QSize, QSizeF, Qt, QTimer)
-from PySide6.QtGui import (QColor, QDesktopServices, QFontMetrics, QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
+from PySide6.QtGui import (QColor, QDesktopServices, QFontMetrics, QIcon, QKeySequence, QPainter, QPainterPath, QPen, QPixmap,
                            QShortcut)
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QFrame, QHBoxLayout,
@@ -31,6 +32,39 @@ ALL = "__todas__"
 LIMITE_MINIATURAS = 800
 
 
+# =========================================================================== indicador online / offline
+
+def bolinha(cor: QColor, d: int = 12) -> QPixmap:
+    """Bolinha cheia (com um halo suave) para o indicador de online/offline."""
+    esc = 3
+    pm = QPixmap(d * esc, d * esc)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    halo = QColor(cor)
+    halo.setAlpha(60)
+    p.setBrush(halo)
+    p.drawEllipse(QRectF(0, 0, d * esc, d * esc))
+    p.setBrush(cor)
+    m = d * esc * 0.2
+    p.drawEllipse(QRectF(m, m, d * esc - 2 * m, d * esc - 2 * m))
+    p.end()
+    pm = pm.scaled(d, d, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    return pm
+
+
+def estado_online(c: "Conexao") -> tuple[str, QColor, str]:
+    """(palavra, cor, dica) do indicador: verde = online, vermelho = offline, cinza = ainda verificando."""
+    if c.online is True:
+        return "Online", theme.OK, "Online: o computador da biblioteca está respondendo."
+    if c.online is False:
+        motivo = ("O convite foi revogado." if c.erro == "sem acesso"
+                  else "O computador da biblioteca está desligado, sem internet ou com o Archiva fechado.")
+        return "Offline", theme.BAD, "Offline: " + motivo
+    return "Verificando…", theme.FAINT, "Verificando se o computador da biblioteca está respondendo…"
+
+
 # =========================================================================== conexões salvas
 
 class Conexao:
@@ -45,6 +79,9 @@ class Conexao:
         self._retentou = False
         self.ultimo_erro = ""    # o último erro ao abrir (texto técnico, vai no relatório)
         self.etapa = ""          # o que o ajudante está fazendo agora (mostrado na tela)
+        self.online: bool | None = None   # None = ainda não verificada; True/False = última resposta do computador da biblioteca
+        self.verificando = False
+        self._trava = threading.Lock()    # abrir e verificar ao mesmo tempo não ligam dois motores
 
     @property
     def nome(self) -> str:
@@ -52,6 +89,10 @@ class Conexao:
 
     def preparar(self) -> Remota:
         """Num ajudante: liga o motor (se precisar) e devolve a Remota pronta para pedir coisas."""
+        with self._trava:
+            return self._preparar()
+
+    def _preparar(self) -> Remota:
         if self.remota is not None and (self.motor is None or self.motor.vivo):
             return self.remota
         if self.dados.get("l"):
@@ -85,6 +126,20 @@ class Conexao:
             else:
                 self.etapa = f"Entrando na rede do Tailscale ({seg} s)"
             time.sleep(1.0)
+
+    def verificar(self) -> bool:
+        """Num ajudante: pergunta ao computador da biblioteca se ele está de pé (pedido leve, /api/info)."""
+        try:
+            self.preparar().info()
+            self.online = True
+            if self.erro == "sem acesso":
+                self.erro = ""
+        except SemAcesso:
+            self.online = False
+            self.erro = "sem acesso"
+        except Exception:  # noqa: BLE001 — qualquer falha de rede conta como offline
+            self.online = False
+        return self.online
 
     def remota_offline(self) -> Remota:
         """Só para ler o que já está neste PC (catálogo salvo, prévias e modelos baixados)."""
@@ -378,6 +433,7 @@ class NuvemPage(QWidget):
         self._cat = ALL
         self._primeira = True
         self._login_aberto = False
+        self._bolinhas: dict[str, tuple[QLabel, QLabel]] = {}   # ident -> (bolinha, palavra) na lista de bibliotecas
         self.tamanho = max(120, min(300, int(self.cfg["thumb_size"] or 168)))
 
         # ---------------- esquerda: biblioteca escolhida + categorias
@@ -419,6 +475,9 @@ class NuvemPage(QWidget):
         self._estado_timer = QTimer(self, interval=4000)
         self._estado_timer.timeout.connect(self._conferir_conexoes)
         self._estado_timer.start()
+        self._online_timer = QTimer(self, interval=20000)      # online/offline: confere a cada 20 s
+        self._online_timer.timeout.connect(self._verificar_online)
+        self._online_timer.start()
         self.corpo.setCurrentIndex(1)
         self._atualizar_seletor()
         self.preencher_lista()
@@ -441,9 +500,22 @@ class NuvemPage(QWidget):
         self.seletor.setStyleSheet("QPushButton{text-align:left; padding:6px 14px; font-size:10.5pt;}")
         self.seletor.clicked.connect(self._menu_bibliotecas)
         l.addWidget(self.seletor)
+        sr = QHBoxLayout()
+        sr.setContentsMargins(14, 0, 0, 0)
+        sr.setSpacing(6)
+        self.ponto = QLabel()
+        self.ponto.setFixedSize(12, 12)
+        self.ponto.setVisible(False)
+        sr.addWidget(self.ponto)
+        self.palavra = QLabel("")
+        self.palavra.setStyleSheet("font-size:9pt;")
+        self.palavra.setVisible(False)
+        sr.addWidget(self.palavra)
         self.selo = QLabel("")
-        self.selo.setStyleSheet(f"color:{theme.LINK.name()}; font-size:9pt; padding-left:14px;")
-        l.addWidget(self.selo)
+        self.selo.setStyleSheet(f"color:{theme.LINK.name()}; font-size:9pt;")
+        sr.addWidget(self.selo)
+        sr.addStretch(1)
+        l.addLayout(sr)
         l.addSpacing(6)
         hc = QHBoxLayout()
         hc.setContentsMargins(12, 0, 8, 0)
@@ -606,6 +678,7 @@ class NuvemPage(QWidget):
 
     def preencher_lista(self):
         self.lista.clear()
+        self._bolinhas.clear()
         salvas = conexoes_salvas(self.cfg)
         for d in salvas:
             c = self.conexoes.get(d.get("id")) or Conexao(d)
@@ -628,6 +701,7 @@ class NuvemPage(QWidget):
     def mostrar_lista(self):
         self.preencher_lista()
         self.paginas.setCurrentIndex(0)
+        self._verificar_online()
 
     def _linha_biblioteca(self, c: "Conexao", cat, extra: str) -> QWidget:
         w = QWidget()
@@ -655,10 +729,22 @@ class NuvemPage(QWidget):
         col.setSpacing(2)
         n = QLabel(c.nome)
         n.setStyleSheet("font-size:12pt;")
+        ponto = QLabel()
+        ponto.setFixedSize(12, 12)
+        palavra = QLabel()
+        palavra.setStyleSheet("font-size:9.5pt;")
+        self._bolinhas[c.ident] = (ponto, palavra)
+        self._pintar_ponto(c)
+        titulo = QHBoxLayout()
+        titulo.setSpacing(8)
+        titulo.addWidget(ponto)
+        titulo.addWidget(n)
+        titulo.addWidget(palavra)
+        titulo.addStretch(1)
         s = QLabel(extra)
         s.setStyleSheet(f"color:{theme.MUTED.name()};")
         col.addStretch(1)
-        col.addWidget(n)
+        col.addLayout(titulo)
         col.addWidget(s)
         col.addStretch(1)
         h.addLayout(col, 1)
@@ -674,6 +760,63 @@ class NuvemPage(QWidget):
     def _atualizar_seletor(self):
         self.seletor.setText(f"{self.conexao.nome}  ▾" if self.conexao is not None else "Bibliotecas  ▾")
         self.b_atualizar.setVisible(self.conexao is not None)
+        self._pintar_ponto(self.conexao)
+
+    # ---------------------------------------------------------------- online / offline
+    def _pintar_ponto(self, c: "Conexao | None"):
+        """Atualiza a bolinha (verde online, vermelha offline, cinza verificando) desta biblioteca onde ela aparece."""
+        if c is None:
+            self.ponto.setVisible(False)
+            self.palavra.setVisible(False)
+            return
+        palavra, cor, dica = estado_online(c)
+        par = self._bolinhas.get(c.ident)
+        if par is not None:
+            try:
+                par[0].setPixmap(bolinha(cor))
+                par[0].setToolTip(dica)
+                par[1].setText(palavra)
+                par[1].setStyleSheet(f"color:{cor.name()}; font-size:9.5pt;")
+                par[1].setToolTip(dica)
+            except RuntimeError:       # a linha foi refeita enquanto a resposta chegava
+                self._bolinhas.pop(c.ident, None)
+        if self.conexao is c:
+            self.ponto.setPixmap(bolinha(cor))
+            self.ponto.setToolTip(dica)
+            self.palavra.setText(palavra)
+            self.palavra.setStyleSheet(f"color:{cor.name()}; font-size:9pt;")
+            self.palavra.setToolTip(dica)
+            self.ponto.setVisible(True)
+            self.palavra.setVisible(True)
+
+    def _verificar_online(self, so_lista: bool = False):
+        """Confere, num ajudante, se o computador de cada biblioteca está de pé. Na lista, todas; aberta, só a atual."""
+        if not self.isVisible():
+            return
+        if self.paginas.currentIndex() == 0:
+            alvo = list(self.conexoes.values())     # as da lista (remover tira da lista e daqui)
+        else:
+            alvo = [self.conexao]
+        for c in alvo:
+            if c is None or c.verificando:
+                continue
+            c.verificando = True
+
+            def feito(_r, c=c):
+                c.verificando = False
+                self._pintar_ponto(c)
+                if self.conexao is c and self.paginas.currentIndex() == 1:
+                    if c.online and self.catalogo is None and c.erro == "desligada":
+                        self.abrir(c.ident)    # voltou ao ar depois de uma falha: abre de novo sozinho
+                    elif self.catalogo is not None and not c.etapa:
+                        self.situacao.setText(f"Conectado · {len(self.catalogo.itens)} modelos" if c.online else
+                                              "Sem conexão com o computador da biblioteca · mostrando a última lista salva")
+
+            def falhou(_e, c=c):
+                c.verificando = False
+                c.online = False
+                self._pintar_ponto(c)
+            segundo_plano.run_async(c.verificar, feito, falhou)
 
     def _menu_bibliotecas(self):
         salvas = conexoes_salvas(self.cfg)
@@ -683,7 +826,9 @@ class NuvemPage(QWidget):
         for d in salvas:
             c = self.conexoes.get(d.get("id")) or Conexao(d)
             self.conexoes[c.ident] = c
-            a = m.addAction(("✔  " if self.conexao is c else "     ") + c.nome)
+            a = m.addAction(("✔  " if self.conexao is c else "") + c.nome)
+            a.setIcon(QIcon(bolinha(estado_online(c)[1], 12)))
+            a.setToolTip(estado_online(c)[2])
             a.triggered.connect(lambda _x=False, i=c.ident: self.abrir(i))
         m.addSeparator()
         m.addAction("Entrar com um convite…").triggered.connect(self.entrar_com_convite)
@@ -878,6 +1023,7 @@ class NuvemPage(QWidget):
             self.situacao.setText("Conectando… (a primeira vez pode levar alguns segundos)")
         c.erro = ""
         c._retentou = False
+        self._pintar_ponto(c)
 
         def buscar():
             c.etapa = "Ligando o motor de rede"
@@ -899,6 +1045,8 @@ class NuvemPage(QWidget):
         def ok(res):
             cat, info = res
             c.erro = ""
+            c.online = True
+            self._pintar_ponto(c)
             if self.conexao is not c:
                 return
             self._mostrar_catalogo(cat)
@@ -907,9 +1055,13 @@ class NuvemPage(QWidget):
             self.situacao.setText(f"Conectado · {len(cat.itens)} modelos")
 
         def erro(e):
+            if isinstance(e, (SemAcesso, Desligada)):
+                c.online = False        # outro tipo de erro (lista, por exemplo) não quer dizer que está offline
             if self.conexao is not c:
+                self._pintar_ponto(c)
                 return
             c.erro = "sem acesso" if isinstance(e, SemAcesso) else "desligada"
+            self._pintar_ponto(c)
             c.etapa = ""      # senão o aviso de andamento apagaria a mensagem de erro
             c.ultimo_erro = f"{type(e).__name__}: {e}" + (f" · causa: {e.__cause__!r}" if e.__cause__ else "")
             if isinstance(e, SemAcesso):
