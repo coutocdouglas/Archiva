@@ -84,4 +84,4 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Favoritos pessoais por biblioteca; tags compartilhadas como as atuais.
 
 ## Versionamento
-Cada atualização só muda o último número da versão. Quando uma mudança merecer 1.1.0 ou 2.0.0 (ou próximo minor/major), sugerir a numeração ao usuário em vez de escolher. O app dele recebe as atualizações direto do GitHub, então nada vai para a `main` antes de a Biblioteca ser testada e aprovada por ele.
+Cada atualização só muda o último número da versão. Quando uma mudança merecer 1.1.0 ou 2.0.0 (ou próximo minor/major), sugerir a numeração ao usuário em vez de escolher. O app dele recebe as atualizações direto do GitHub. **Decidido em 2026-11-20:** cada etapa pronta e testada vai para a `main` como versão nova (VERSION + seção no NOVIDADES.md), para chegar como atualização no Archiva instalado. Toda versão publicada chega a todos os computadores com o Archiva, então só vai para a `main` o que já foi testado (abrir o programa, outras páginas abrindo, a aba funcionando) e que não muda o comportamento da Biblioteca. O trabalho de cada etapa continua no branch `vegetacao` até ficar pronto.

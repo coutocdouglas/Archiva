@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.15
+- **Nova aba Vegetação** (no menu lateral, abaixo de Biblioteca). Mostra as coleções de plantas em quatro níveis: **coleções › volumes › espécies › arquivos**. Cada espécie tem sua capa e cada arquivo a sua prévia, com o tamanho e o selo **mesh** ou **mesh + proxy**. O painel da direita traz o renderizador, o tamanho do arquivo e os botões **Mostrar na pasta** e **Abrir o PDF do volume**.
+- **Busca por espécie** em todas as coleções, sem se importar com acentos ou maiúsculas (por exemplo, `phoenix cana`), com filtro por coleção.
+- **Você escolhe as pastas.** Nada é procurado sozinho: clique em **Adicionar coleção** e indique a pasta raiz de cada coleção (a do Maxtree, a do Globe Plants). **Tirar da Vegetação** (botão direito no cartão) só esquece a pasta, sem apagar nada.
+- Nesta versão a aba **só lê** as pastas; nada é movido nem apagado. Volumes ainda compactados ou corrompidos aparecem com aviso. Arrastar para o 3ds Max, organizar os volumes, proxies, favoritos e tags chegam nas próximas versões.
+
 ## 2.0.14
 - **Nuvem: bolinha de online/offline.** Cada biblioteca da Nuvem mostra uma bolinha **verde (online)** ou **vermelha (offline)**, na lista de bibliotecas, logo abaixo do nome da biblioteca aberta e no menu da seta ▾. Online quer dizer que o computador da biblioteca está ligado, com o Archiva aberto e respondendo; offline, que ele está desligado, sem internet, com o Archiva fechado ou que o convite foi revogado (passe o mouse na bolinha para ver). Cinza = verificando. A conferência é automática, a cada 20 s, e a lista na tela avisa quando a conexão cai ou volta.
 
