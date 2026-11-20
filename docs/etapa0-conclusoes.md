@@ -47,7 +47,28 @@ Leitura das duas coleções em ~4 s (disco local). 17 espécies aparecem em mais
 13. **Globe**: a prévia de *Acer platanoides Crimson King* tem o nome encurtado (`Acer-platanoides_PRV1.jpg`). O leitor aceita prefixo. Há um `Bundle65_Street_Trees_GFX.rar` (3 GB) ao lado da pasta extraída, e a regra é só avisar.
 14. **Thumbs.db**: 39 no total, ignorados e não apagados.
 
-## Perguntas para decidir antes da etapa 1
+## Respostas (2026-11-20)
+
+As decisões estão em `docs/plano-vegetacao.md`, seção "Decisões depois da etapa 0". O relatório tem uma seção "Simulação das regras da etapa 2" com o que sairia (cerca de 9,5 GB). Nada foi movido.
+
+### Teste dos compactados (sem extrair: `rar t` e `zipfile.testzip`)
+
+| Volume | Resultado | O que a etapa 2 faz |
+|---|---|---|
+| Vol 032 (6 .zip) | OK | extrair |
+| Vol 033 (3 partes .rar) | OK | extrair |
+| Vol 103 (2 partes .rar) | OK | extrair |
+| Vol 134 (só `part2.rar`) | **erro**: falta a parte 1 | marcar "corrompido ou fora do padrão" |
+| Vol 130 (3 partes .rar) | **erro**: soma de verificação em `MT_PM_V130_Alluaudia_procera_01_Trunk_03_normal.jpg` e cabeçalho corrompido | marcar "corrompido ou fora do padrão"; **não** descartar o .rar |
+| Globe `Bundle65_Street_Trees_GFX.rar` | OK | já extraído → descartar o .rar |
+
+**Vol 130 em detalhe**: a pasta extraída está incompleta. O .rar quebra no meio das texturas. No disco há os 72 .max, mas só as 4 espécies *Alluaudia* têm texturas; as outras 8 espécies (48 .max) estão sem nenhuma. Também faltam as pastas `MT_PM_V130_3Dsmax_FPPL` (biblioteca Forest Pack) e `MT_PM_V130_FBX`. Para recuperar o volume é preciso baixar o .rar de novo, pelo menos a parte 2. O relatório passou a detectar esse caso sozinho: no volume já extraído, cada espécie precisa ter ao menos uma textura no Maps.
+
+### Vol 005 e o PDF
+
+O `MT_PM_V5.pdf` é só imagem, sem texto. As 19 páginas são a capa mais uma página por modelo, e cada uma traz só o código (`MT_PM_V5_18_01------03`), sem o nome da espécie. Pela regra, os modelos ficam como "Modelo 01…18".
+
+## Perguntas (já respondidas, mantidas como registro)
 
 1. **Vol 003/004/005: Forest Pack × Mesh.** Mostrar como **um cartão** com as duas origens (escolher no painel) ou como **dois cartões** ("FP" e "Mesh")? Minha sugestão é um cartão, com a Mesh/Corona como padrão.
 2. **Cenas e Greenwall** (Vol 001, 010, 041, 044): mostrar num grupo "Cenas e conjuntos" dentro do volume ou esconder?

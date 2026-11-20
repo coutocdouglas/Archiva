@@ -338,6 +338,11 @@ def scan_volume(vol: Volume, collection: str, parse_name) -> None:
                      if not is_under(rel(c, vol.path).split("/")[:-1], MAPS_HINT)]
             if loose:
                 m.preview, m.preview_via = loose[0], "nome quase igual"
+            else:   # cenas do Vol 001: scene01.max ↔ scene01_1.jpg
+                numbered = [c for c in images_by_stem.get(stem + "_1", [])
+                            if os.path.dirname(c) == os.path.dirname(m.path)]
+                if numbered:
+                    m.preview, m.preview_via = numbered[0], "nome_1"
 
     # --- espécie: capa e plano C (prévia pela espécie, ex. Globe Plants Mesh/GrowFX)
     preview_imgs = [p for p in images_all
@@ -639,6 +644,238 @@ def md_report(root: str, colls: list[dict]) -> str:
             for s in c["soltos"]:
                 w(f"- Arquivo solto sem pasta de mesmo nome: `{s}`")
             w("")
+
+    # ---- simulação das decisões (nada é feito; só mostra o que a etapa 2 faria)
+    w("## Simulação das regras da etapa 2 (nada foi movido)")
+    w("")
+    w("Aplica as decisões registradas em `docs/plano-vegetacao.md`. \"Descartar\" = mover para `_DESCARTADOS` "
+      "dentro do volume, com conferência e desfazer.")
+    w("")
+    w("| Coleção / volume | Regra | O que | Tamanho |")
+    w("|---|---|---|---:|")
+    total = 0
+    for c in colls:
+        for v in c["volumes"]:
+            for regra, alvo, size, _ in simulate(v):
+                total += size
+                w(f"| {c['nome']} / {v.name} | {regra} | `{alvo}` | {human_size(size) if size else '—'} |")
+    w("")
+    w(f"Total que sairia das coleções: **{human_size(total)}**.")
+    w("")
+    return "\n".join(L) + "\n"
+
+
+def _tree_size(path: str) -> int:
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    n = 0
+    for dp, _, fns in os.walk(path):
+        for fn in fns:
+            try:
+                n += os.path.getsize(os.path.join(dp, fn))
+            except OSError:
+                pass
+    return n
+
+
+def _top(v: Volume, path: str) -> str:
+    """Primeira pasta abaixo do volume (a de fora, quando há pasta aninhada em dobro)."""
+    return rel(path, v.path).split("/")[0]
+
+
+def simulate(v: Volume) -> list[tuple[str, str, int, str | None]]:
+    """(regra, alvo relativo, bytes, caminho absoluto que sairia — ou None se nada sai)."""
+    out: list[tuple[str, str, int, str | None]] = []
+    meshes = [m for m in v.maxes if m.tipo == "mesh"]
+    # regra 1: mesmo .max em duas pastas → fica o da pasta Corona
+    byname = collections.defaultdict(list)
+    for m in meshes:
+        byname[os.path.basename(m.path).casefold()].append(m)
+    losers = collections.Counter()
+    for ms in byname.values():
+        if len(ms) < 2:
+            continue
+        corona = [m for m in ms if "corona" in rel(m.path, v.path).casefold()]
+        keep = corona[0] if corona else ms[0]
+        for m in ms:
+            if m is not keep:
+                losers[_top(v, m.path)] += 1
+    for top, n in losers.items():
+        allin = sum(1 for m in v.maxes if _top(v, m.path) == top)
+        what = top if n == allin else f"{top} ({n} de {allin} .max)"
+        out.append(("1: versão repetida (fica a Corona)", what + "/", _tree_size(os.path.join(v.path, top)),
+                    os.path.join(v.path, top)))
+    # regra 2: volume com malhas e com pasta de cena → descarta a pasta de cena
+    if meshes:
+        for top in sorted({_top(v, m.path) for m in v.maxes if m.tipo == "cena"}):
+            out.append(("2: cena num volume que tem malhas", top + "/", _tree_size(os.path.join(v.path, top)),
+                        os.path.join(v.path, top)))
+    # regra do plano: V-Ray sai só se existir a mesma coisa em Corona
+    for tipo in ("mesh", "growfx", "greenwall"):
+        vr = [m for m in v.maxes if m.tipo == tipo and m.render == "vray"]
+        co = [m for m in v.maxes if m.tipo == tipo and m.render == "corona"]
+        if vr and co:
+            for d in sorted({os.path.dirname(m.path) for m in vr}):
+                if any(os.path.dirname(m.path) == d for m in co):   # V-Ray e Corona na mesma pasta: só os arquivos
+                    for m in vr:
+                        if os.path.dirname(m.path) == d:
+                            out.append((f"plano: {tipo} V-Ray com versão Corona", rel(m.path, v.path), m.size, m.path))
+                else:
+                    out.append((f"plano: {tipo} V-Ray com versão Corona", rel(d, v.path) + "/", _tree_size(d), d))
+    # regra 4: compactados
+    has_maps = any("maps" in p.casefold() for p in os.listdir(v.path)) or any(
+        "maps" in d.casefold() for dp, dns, _ in os.walk(v.path) for d in dns)
+    # extração completa? cada espécie precisa ter ao menos uma textura no Maps.
+    # Só serve para volumes cujas texturas levam o nome da espécie (Maxtree recentes, ex. Vol 130);
+    # nos antigos (003–023) as texturas não têm o nome da espécie e o teste daria falso alarme.
+    map_names = " ".join(slug(f) for dp, _, fns in os.walk(v.path)
+                         if any("maps" in p.casefold() for p in rel(dp, v.path).split("/")) for f in fns)
+    sem_textura = sorted({m.species for m in meshes if m.species and species_norm(m.species) not in map_names})
+    for a in v.archives:
+        r = rel(a.path, v.path)
+        if v.maxes and has_maps and sem_textura and "maxtree" in v.key:
+            out.append((f"4: extração **incompleta** (sem texturas: {', '.join(sem_textura)}) → "
+                        "\"corrompido ou fora do padrão\", não descartar", r, 0, None))
+        elif v.maxes and has_maps:
+            out.append(("4: compactado já extraído (Maps e malhas presentes)", r, a.size, a.path))
+        else:
+            out.append(("4: não extraído → tentar extrair; se falhar, \"corrompido ou fora do padrão\"", r, 0, None))
+    return out
+
+
+# ----------------------------------------------------------------------------- padrão de pastas (simulação)
+
+def volume_prefix(v: Volume) -> str:
+    num = int(re.search(r"(\d+)$", v.key).group(1)) if re.search(r"(\d+)$", v.key) else 0
+    return f"GP_B{num:03d}" if "globe" in v.key else f"MT_PM_V{num:03d}"
+
+
+def layout(v: Volume) -> dict:
+    """Para onde cada arquivo iria no padrão de pastas (docs/plano-vegetacao.md). Não move nada."""
+    pre = volume_prefix(v)
+    sim = simulate(v)
+    res = {"prefixo": pre, "status": "organizar", "linhas": collections.Counter(), "bytes": collections.Counter(),
+           "copias": 0, "colisoes": [], "descartados": sum(1 for *_, a in sim if a)}
+    if any("incompleta" in r for r, *_ in sim) or any("falta" in n for n in v.notes):
+        res["status"] = "não organizar: corrompido ou fora do padrão"
+        return res
+    if not v.maxes:
+        res["status"] = "extrair antes de organizar"
+        return res
+    gone = [os.path.normcase(a) for *_, a in sim if a]
+    is_gone = lambda p: any(os.path.normcase(p) == g or os.path.normcase(p).startswith(g + os.sep) for g in gone)
+
+    kept = [m for m in v.maxes if not is_gone(m.path)]
+    has_mesh = any(m.tipo in ("mesh", "greenwall") for m in kept)
+    to_mesh = [m for m in kept if m.tipo in ("mesh", "greenwall") or (m.tipo == "cena" and not has_mesh)]
+    mesh_paths = {os.path.normcase(m.path) for m in to_mesh}
+    mesh_stems = {(os.path.normcase(os.path.dirname(m.path)), os.path.splitext(os.path.basename(m.path))[0].casefold())
+                  for m in to_mesh}
+    mesh_dirs = {os.path.normcase(os.path.dirname(m.path)) for m in to_mesh}
+    # prévia fora da pasta do .max → cópia com o nome do .max
+    for m in to_mesh:
+        if m.preview and (os.path.dirname(m.preview) != os.path.dirname(m.path) or
+                          os.path.splitext(os.path.basename(m.preview))[0].casefold()
+                          != os.path.splitext(os.path.basename(m.path))[0].casefold()):
+            res["copias"] += 1
+    # biblioteca Forest Pack (index.xml, matlib, .ms) acompanha as malhas
+    lib_dirs = {os.path.normcase(os.path.join(v.path, i["path"].replace("/", os.sep))).rsplit(os.sep, 1)[0]
+                for i in v.indexes if not i["vazio"]}
+    lib_dirs = {d for d in lib_dirs if any(md == d or md.startswith(d + os.sep) for md in mesh_dirs)}
+
+    covers = {os.path.normcase(p) for _, p in v.species_cover.values() if p}
+    dest_names = collections.defaultdict(list)
+    for dp, dns, fns in os.walk(v.path):
+        dns[:] = [d for d in dns if d.casefold() != DISCARD_DIR]
+        ndp = os.path.normcase(dp)
+        for fn in fns:
+            full = os.path.join(dp, fn)
+            if is_gone(full):
+                continue
+            ext = os.path.splitext(fn)[1].lower()
+            stem = os.path.splitext(fn)[0].casefold()
+            parts = [x.casefold() for x in rel(dp, v.path).split("/")] if dp != v.path else []
+            if fn.casefold() in IGNORED_FILES:
+                res["ignorados"] = res.get("ignorados", 0) + 1
+                continue
+            if ext == ".max":
+                dest = "Mesh" if os.path.normcase(full) in mesh_paths else "Outros"
+            elif ext in IMAGE_EXT and (ndp, stem) in mesh_stems:
+                dest = "Mesh"
+            elif ext in {".cproxy", ".cgeo", ".vrmesh"}:
+                dest = "Mesh/Proxy"
+            elif ext == ".pdf" or (ext in IMAGE_EXT and "------" in fn):
+                dest = "PDF"
+            elif os.path.normcase(full) in covers and not any("thumb" in x for x in parts):
+                dest = "PDF"   # capa da espécie (ex.: Globe _PRV1)
+            elif any(ndp == d or ndp.startswith(d + os.sep) for d in lib_dirs) and (
+                    fn.casefold() == "index.xml" or ext == ".mat") and not any("thumb" in x for x in parts):
+                dest = "Mesh"
+            elif ext == ".ms" and any(d == ndp or d.startswith(ndp + os.sep) for d in lib_dirs):
+                dest = "Mesh"
+            elif any("maps" in x for x in parts) and ext in IMAGE_EXT | {".exr", ".hdr", ".tga", ".tx"}:
+                dest = "Maps"
+            else:
+                dest = "Outros"
+            src = rel(dp, v.path) if dp != v.path else "(raiz do volume)"
+            res["linhas"][(src, dest)] += 1
+            try:
+                res["bytes"][(src, dest)] += os.path.getsize(full)
+            except OSError:
+                pass
+            if dest in ("Mesh", "Maps", "Mesh/Proxy"):
+                dest_names[(dest, fn.casefold())].append(src)
+    res["colisoes"] = [(d, n, srcs) for (d, n), srcs in dest_names.items() if len(srcs) > 1]
+    return res
+
+
+def md_layout(colls: list[dict]) -> str:
+    L: list[str] = []
+    w = L.append
+    w("## Simulação do padrão de pastas (nada foi movido)")
+    w("")
+    w("Para onde cada pasta iria ao organizar no padrão de `docs/plano-vegetacao.md`. Os descartes da seção "
+      "anterior não aparecem aqui. **Outros** é o que o usuário revisa na tela de organizar (padrão: manter).")
+    w("")
+    resumo = collections.Counter()
+    for c in colls:
+        for v in c["volumes"]:
+            r = layout(v)
+            w(f"### {v.name} → `{r['prefixo']} - …`")
+            w("")
+            if r["status"] != "organizar":
+                w(f"**{r['status']}**.")
+                w("")
+                continue
+            w("| Origem | Destino | Arquivos | Tamanho |")
+            w("|---|---|---:|---:|")
+            for (src, dest), n in sorted(r["linhas"].items(), key=lambda kv: (kv[0][1], natural_key(kv[0][0]))):
+                b = r["bytes"][(src, dest)]
+                resumo[dest] += b
+                shown = f"`{r['prefixo']} - {dest.replace('Mesh/Proxy', 'Mesh/' + r['prefixo'] + ' - Proxy')}`"
+                w(f"| `{src}` | {shown} | {n} | {human_size(b)} |")
+            w("")
+            extra = []
+            if r.get("ignorados"):
+                extra.append(f"{r['ignorados']} Thumbs.db/desktop.ini ignorados")
+            if r["copias"]:
+                extra.append(f"{r['copias']} prévias copiadas para o lado do .max, com o nome dele")
+            if r["colisoes"]:
+                ex = r["colisoes"][0]
+                extra.append(f"⚠ {len(r['colisoes'])} nomes repetidos no mesmo destino "
+                             f"(ex.: `{ex[1]}` em {ex[0]}, vindo de {', '.join('`'+s+'`' for s in ex[2][:3])}) — "
+                             "decidir antes de mover")
+            for e in extra:
+                w(f"- {e}")
+            if extra:
+                w("")
+    w("### Total por destino")
+    w("")
+    w("| Destino | Tamanho |")
+    w("|---|---:|")
+    for d, b in sorted(resumo.items(), key=lambda kv: -kv[1]):
+        w(f"| {d} | {human_size(b)} |")
+    w("")
     return "\n".join(L) + "\n"
 
 
@@ -669,7 +906,7 @@ def main(argv=None) -> int:
             print(f"Coleção não encontrada: {os.path.join(a.raiz, n)}", file=sys.stderr)
             continue
         colls.append(scan_collection(a.raiz, n))
-    text = md_report(a.raiz, colls)
+    text = md_report(a.raiz, colls) + "\n" + md_layout(colls)
     os.makedirs(os.path.dirname(os.path.abspath(a.saida)), exist_ok=True)
     with open(a.saida, "w", encoding="utf-8") as f:
         f.write(text)
