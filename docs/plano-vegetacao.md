@@ -77,9 +77,20 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
    - não extraído → tentar extrair; se der erro, marcar o volume como **"corrompido ou fora do padrão"** e não mexer em mais nada;
    - extração e descarte são da etapa 2 (com simulação). Na etapa 0 os compactados só foram testados (`rar t` / `zipfile.testzip`, sem gravar nada); resultado em `docs/etapa0-conclusoes.md`.
 
+## Etapa 2 entregue (2.0.16)
+- `app/vegetacao/organizar.py`: planejar (simulação, só lê) › aplicar (move, nunca apaga; diário `archiva.json`) › desfazer (lê o diário de trás para a frente). Organização interrompida no meio deixa `archiva.json.parcial` e bloqueia uma nova até desfazer.
+- `app/vegetacao/conferencia.py`: tela de conferência (Resumo, Outros com caixas — desmarcado = manter —, _DESCARTADOS com o motivo, todos os movimentos).
+- `app/vegetacao/extrair.py`: extrai numa pasta temporária dentro do volume; deu certo → `archiva_extracao.json` com `ok`; deu erro → marca "corrompido ou fora do padrão" e apaga só a extração parcial.
+- Capa do volume: 1ª página do PDF (QtPdf). Capa da espécie: composição `_01------03` › imagem com o nome da espécie (Vol 003–010) › `_PRV1` (Globe) › tamanho 03.
+- Testado: organizar › ler › desfazer em todos os 24 volumes organizáveis (esqueleto) e no Bundle 65, cópias reais dos Vol 001 e 004 (byte a byte), extração de zip, rar em partes e rar corrompido, e o fluxo inteiro pela página.
+- Ainda não feito: esvaziar `_DESCARTADOS` (apagar de vez) e organizar vários volumes de uma vez.
+
+## Pedidos para a próxima versão
+- ✅ (2.0.16) **Seta de voltar no topo** da aba Vegetação (pedido do usuário depois da 2.0.15): ao lado das migalhas, uma seta "‹" que sobe um nível (arquivos › espécies › volumes › coleções › início). Na busca, volta para onde estava antes de buscar. Esconder no início.
+
 ## Pontos a validar
 - Bibliotecas de material do Globe Plants: confirmar que as texturas estão embutidas no .max (conferido só no Vol 071).
-- QtPdf empacotado no exe.
+- ✅ QtPdf empacotado no exe (2.0.16): os PDFs novos da Maxtree são protegidos (sem senha para abrir) e só o QtPdf desenha a 1ª página; se ele faltar, o Archiva tenta a primeira imagem JPEG do PDF.
 - Forest Pack: provavelmente scriptável; Chaos Scatter: não confirmado.
 - Favoritos pessoais por biblioteca; tags compartilhadas como as atuais.
 

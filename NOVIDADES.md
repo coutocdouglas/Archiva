@@ -2,6 +2,13 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.16
+- **Vegetação: organizar volumes.** Dentro de um volume, **Organizar volume…** mostra antes uma simulação com o que vai para cada pasta: **Mesh** (os .max, cada um com a prévia ao lado), **Maps**, **PDF** (o PDF e as capas das espécies) e **Outros**. Em **Outros** fica o que não tem lugar no padrão, e você marca o que quer mandar para **_DESCARTADOS** (desmarcado = manter). Nada é apagado: o que sai (versão repetida, cena num volume que já tem as malhas, V-Ray quando existe a Corona, compactado já extraído, Thumbs.db) vai para `_DESCARTADOS` dentro do próprio volume.
+- **Desfazer organização** volta o volume exatamente como estava, arquivo por arquivo.
+- **Extrair volume…** para volumes ainda compactados (.zip e .rar em partes). Se der erro, o volume fica marcado como **corrompido ou fora do padrão** e nada da pasta é apagado.
+- **Capas:** a capa do volume que não tinha imagem passa a ser a 1ª página do PDF (botão direito no volume › **Criar capa a partir do PDF**). As espécies dos volumes 003 a 010 agora usam a imagem com o nome da espécie como capa.
+- **Seta de voltar** no topo da aba Vegetação, ao lado do caminho.
+
 ## 2.0.15
 - **Nova aba Vegetação** (no menu lateral, abaixo de Biblioteca). Mostra as coleções de plantas em quatro níveis: **coleções › volumes › espécies › arquivos**. Cada espécie tem sua capa e cada arquivo a sua prévia, com o tamanho e o selo **mesh** ou **mesh + proxy**. O painel da direita traz o renderizador, o tamanho do arquivo e os botões **Mostrar na pasta** e **Abrir o PDF do volume**.
 - **Busca por espécie** em todas as coleções, sem se importar com acentos ou maiúsculas (por exemplo, `phoenix cana`), com filtro por coleção.

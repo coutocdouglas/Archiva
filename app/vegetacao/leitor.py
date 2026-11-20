@@ -50,7 +50,7 @@ def _parts(path: str, base: str) -> list[str]:
 
 def _skip_dir(name: str) -> bool:
     n = name.casefold()
-    return n in SKIP_DIRS or n.endswith(" - outros")
+    return n in SKIP_DIRS or n.endswith(" - outros") or n.startswith("_extraindo")
 
 
 # ----------------------------------------------------------------------------- nomes
@@ -258,6 +258,14 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
     vol = Volume(key, name, rotulo, path)
     vol.organizado = os.path.isfile(os.path.join(path, "archiva.json"))
     parse = parse_maxtree if "maxtree" in col_key else parse_globe
+    # volume organizado: o nome da pasta original ("…_Mesh_Corona") se perdeu; tipo e renderizador vêm do diário
+    itens: dict = {}
+    if vol.organizado:
+        try:
+            with open(os.path.join(path, "archiva.json"), encoding="utf-8") as f:
+                itens = {k.casefold(): v for k, v in (json.load(f).get("itens") or {}).items()}
+        except (OSError, ValueError, AttributeError):
+            itens = {}
 
     maxes: list[dict] = []
     images: dict[str, list[str]] = collections.defaultdict(list)       # nome (minúsculo) → caminhos
@@ -281,6 +289,9 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
             ext = ext.lower()
             if ext == ".max":
                 tipo, render = _classify(parts, stem)
+                info = itens.get(fn.casefold())
+                if info:
+                    tipo, render = info.get("tipo", tipo), info.get("render", render)
                 try:
                     size = os.path.getsize(full)
                 except OSError:
@@ -317,6 +328,13 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
             vol.aviso = _archive_problem(archives) or "ainda não extraído"
             if "falta" in vol.aviso:
                 vol.status = "corrompido"
+            try:        # a extração já foi tentada e deu erro (archiva_extracao.json)
+                with open(os.path.join(path, "archiva_extracao.json"), encoding="utf-8") as f:
+                    err = json.load(f).get("erro", "")
+                if err:
+                    vol.status, vol.aviso = "corrompido", err
+            except (OSError, ValueError):
+                pass
             return vol
         return None
 
@@ -394,9 +412,12 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
             mm = re.match(r"^(.+)-prv(\d+)$", slug(os.path.splitext(os.path.basename(p))[0]))
             if mm and (e.key == mm.group(1) or e.key.startswith(mm.group(1) + "-")):
                 prv.append((e.key != mm.group(1), int(mm.group(2)), p))
+        # imagem de apresentação com o nome da espécie (Vol 004: "MT_PM_V4_Aglaonema spp.jpg")
+        named = [p for p in previews
+                 if slug(re.sub(r"^MT_PM_(V\d+_)?", "", os.path.splitext(os.path.basename(p))[0], flags=re.I)) == e.key]
         t03 = [a.preview for a in e.arquivos if a.tamanho == "03" and a.preview]
         first = [a.preview for a in e.arquivos if a.preview]
-        e.capa = (comp01 or comp or [p for *_, p in sorted(prv)] or t03 or first or [None])[0]
+        e.capa = (comp01 or comp or named or [p for *_, p in sorted(prv)] or t03 or first or [None])[0]
         # prévia de quem não tem (Globe: Mesh/Corona e GrowFX só têm a prévia da espécie)
         for a in e.arquivos:
             if not a.preview:
@@ -404,12 +425,21 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
 
     vol.especies = sorted(groups.values(), key=lambda e: (e.grupo, natural_key(e.nome)))
 
-    # extração incompleta (Vol 130): espécie sem nenhuma textura no Maps, com o compactado ao lado
-    if archives:
+    # extração incompleta (Vol 130): algumas espécies têm texturas com o nome delas e outras não, com o compactado
+    # ao lado. Não vale quando o próprio Archiva extraiu e deu certo, nem quando nenhuma textura leva o nome da
+    # espécie (volumes antigos, como o 004: aí o nome das texturas não diz nada).
+    extracted_ok = False
+    try:
+        with open(os.path.join(path, "archiva_extracao.json"), encoding="utf-8") as f:
+            extracted_ok = bool(json.load(f).get("ok"))
+    except (OSError, ValueError):
+        pass
+    if archives and not extracted_ok:
         map_names = " ".join(slug(f) for dp, _, fns in os.walk(path) if any("maps" in p for p in _parts(dp, path))
                              for f in fns)
-        sem = [e.nome for e in vol.especies if not e.grupo and e.key not in map_names]
-        if sem and "maxtree" in col_key:
+        reais = [e for e in vol.especies if not e.grupo]
+        sem = [e.nome for e in reais if e.key not in map_names]
+        if sem and len(sem) < len(reais) and "maxtree" in col_key:
             vol.status = "corrompido"
             vol.aviso = f"extração incompleta: {len(sem)} espécies sem texturas"
     return vol

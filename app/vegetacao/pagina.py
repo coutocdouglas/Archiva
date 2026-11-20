@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QLab
 from .. import segundo_plano, theme, ui
 from ..config import data_dir
 from ..janela import TITLE_H
-from . import leitor
+from . import leitor, organizar
 
 ui._ICONS.setdefault("vegetacao", '<path d="M12 21V11"/><path d="M12 11C12 7 9 5 5 5c0 4 3 6 7 6z"/>'
                                   '<path d="M12 14c0-3 2-5 6-5 0 3-2 5-6 5z"/>')
@@ -322,10 +322,20 @@ class VegetacaoPage(QWidget):
         main.setSpacing(6)
         outer.addLayout(main, 1)
 
+        crow = QHBoxLayout()
+        crow.setSpacing(8)
+        self.btn_back = QPushButton("‹")
+        self.btn_back.setToolTip("Voltar um nível (Backspace)")
+        self.btn_back.setCursor(Qt.PointingHandCursor)
+        self.btn_back.setFixedSize(30, 26)
+        self.btn_back.setStyleSheet("QPushButton{font-size:15pt; padding:0 0 3px 0; border-radius:8px;}")
+        self.btn_back.clicked.connect(self.go_back)
+        crow.addWidget(self.btn_back)
         self.crumbs = QLabel()
         self.crumbs.setTextFormat(Qt.RichText)
         self.crumbs.linkActivated.connect(self._crumb)
-        main.addWidget(self.crumbs)
+        crow.addWidget(self.crumbs, 1)
+        main.addLayout(crow)
         head = QHBoxLayout()
         tl = QVBoxLayout()
         tl.setSpacing(2)
@@ -341,6 +351,17 @@ class VegetacaoPage(QWidget):
         self.btn_refresh.setCursor(Qt.PointingHandCursor)
         self.btn_refresh.clicked.connect(self.rescan)
         head.addWidget(self.btn_refresh, 0, Qt.AlignBottom)
+        self.btn_undo = QPushButton("Desfazer organização")
+        self.btn_undo.setCursor(Qt.PointingHandCursor)
+        self.btn_undo.clicked.connect(lambda: self.where[0] == "volume" and self.undo_volume(self.where[2]))
+        head.addWidget(self.btn_undo, 0, Qt.AlignBottom)
+        self.btn_extract = ui.primary(QPushButton("Extrair volume…"))
+        self.btn_extract.clicked.connect(lambda: self.where[0] == "volume" and self.extract_volume(*self.where[1:3]))
+        head.addWidget(self.btn_extract, 0, Qt.AlignBottom)
+        self.btn_org = ui.primary(QPushButton("Organizar volume…"))
+        self.btn_org.setToolTip("Mostra antes o que vai acontecer; nada é apagado e dá para desfazer")
+        self.btn_org.clicked.connect(lambda: self.where[0] == "volume" and self.organize_volume(*self.where[1:3]))
+        head.addWidget(self.btn_org, 0, Qt.AlignBottom)
         self.btn_add = ui.primary(QPushButton("Adicionar coleção"))
         self.btn_add.clicked.connect(self.add_collection)
         head.addWidget(self.btn_add, 0, Qt.AlignBottom)
@@ -464,6 +485,106 @@ class VegetacaoPage(QWidget):
         leitor.save_index(self.index_path, self.cols)
         self.go(("inicio",))
 
+    # ------------------------------------------------------------------ organizar (etapa 2)
+    @staticmethod
+    def _can_undo(v) -> bool:
+        return organizar.esta_organizado(v.path) or organizar.interrompido(v.path)
+
+    def organize_volume(self, c, v):
+        from PySide6.QtWidgets import QDialog, QMessageBox
+        from .conferencia import OrganizarDialog
+        try:
+            plano = segundo_plano.wait(self, f"Preparando a simulação de {v.rotulo}…",
+                                       lambda: organizar.planejar(c.key, v.path, c.path))
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "Organizar", f"Não foi possível ler o volume ({e}). Nada foi mexido.")
+            return
+        dlg = OrganizarDialog(self, v.rotulo, plano)
+        if dlg.exec() != QDialog.Accepted or plano.status != "ok":
+            return
+        marked = dlg.marked()
+
+        def work(report):
+            return organizar.aplicar(plano, marked, progress=lambda i, n: report(i, n, f"Organizando {v.rotulo}…"))
+
+        try:
+            journal = segundo_plano.wait(self, f"Organizando {v.rotulo}…", work)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "Organizar",
+                                f"A organização parou no meio ({e}).\n\nNada foi apagado. Use \"Desfazer organização\" "
+                                "para voltar o que já tinha sido movido.")
+            self.rescan()
+            return
+        QMessageBox.information(self, "Organizar",
+                                f"{v.rotulo} organizado: {len(journal['passos'])} movimentos.\n\nO que saiu está em "
+                                "_DESCARTADOS dentro do volume. \"Desfazer organização\" volta tudo como estava.")
+        self.rescan()
+
+    def undo_volume(self, v):
+        from PySide6.QtWidgets import QMessageBox
+        if QMessageBox.question(self, "Desfazer organização",
+                                f"Voltar {v.rotulo} exatamente como estava antes de organizar?\n\nOs arquivos voltam "
+                                "para as pastas originais e as cópias de prévias e a capa criadas pelo Archiva "
+                                "são removidas.") != QMessageBox.Yes:
+            return
+        try:
+            n = segundo_plano.wait(self, f"Desfazendo {v.rotulo}…",
+                                   lambda report: organizar.desfazer(v.path, progress=lambda i, t: report(i, t)))
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "Desfazer organização", f"Não foi possível desfazer tudo ({e}).\n\nO diário "
+                                "continua no volume (archiva.json): dá para tentar de novo.")
+            self.rescan()
+            return
+        QMessageBox.information(self, "Desfazer organização", f"{v.rotulo} voltou como estava ({n} movimentos).")
+        self.rescan()
+
+    def extract_volume(self, c, v):
+        from PySide6.QtWidgets import QMessageBox
+        from . import extrair
+        tools = getattr(self.w, "tools", None) or {}
+        archives = extrair.archives_to_extract(v.path)
+        if not archives:
+            return
+        if not tools and any(not a.lower().endswith(".zip") for a in archives):
+            QMessageBox.warning(self, "Extrair volume", "Para abrir arquivos RAR é preciso ter o WinRAR ou o 7-Zip "
+                                "instalado (ou indicar o programa em Configurações).")
+            return
+        need = extrair.estimate(archives)
+        free = extrair.free_space(v.path)
+        names = "\n".join(f"  • {os.path.basename(a)}" for a in archives)
+        if free and need > free:
+            QMessageBox.warning(self, "Extrair volume", f"Falta espaço no disco: a extração precisa de uns "
+                                f"{human_size(need)} e há {human_size(free)} livres. Nada foi feito.")
+            return
+        if QMessageBox.question(self, "Extrair volume",
+                                f"Extrair {v.rotulo}?\n\n{names}\n\nPrecisa de uns {human_size(need)} livres no disco. "
+                                "Os compactados ficam onde estão; depois de conferir, \"Organizar\" manda os que já "
+                                "foram extraídos para _DESCARTADOS.\n\nArquivos grandes podem levar alguns minutos."
+                                ) != QMessageBox.Yes:
+            return
+        res = segundo_plano.wait(self, f"Extraindo {v.rotulo}…",
+                                 lambda report: extrair.extrair(v.path, tools, report))
+        if res["ok"]:
+            QMessageBox.information(self, "Extrair volume", f"{v.rotulo} extraído. Confira o volume e, quando "
+                                    "quiser, use \"Organizar volume…\".")
+        else:
+            QMessageBox.warning(self, "Extrair volume", f"{v.rotulo}: {res['erro']}.\n\nO volume foi marcado como "
+                                "\"corrompido ou fora do padrão\". Nada da pasta original foi apagado.")
+        self.rescan()
+
+    def cover_from_pdf(self, c, v):
+        from PySide6.QtWidgets import QMessageBox
+        dest = os.path.join(c.path, v.nome + ".jpg")
+        if os.path.exists(dest):
+            return
+        jpg = segundo_plano.wait(self, "Lendo o PDF…", lambda: organizar.capa_pdf(v.pdf))
+        if not jpg:
+            QMessageBox.information(self, "Capa", "Não foi possível tirar uma imagem deste PDF.")
+            return
+        with open(dest, "wb") as f:
+            f.write(jpg)
+        self.rescan()
+
     # ------------------------------------------------------------------ navegação
     def _crumb(self, link: str):
         w = self.where
@@ -488,6 +609,10 @@ class VegetacaoPage(QWidget):
         self.search.setVisible(kind in ("inicio", "busca"))
         self.chips_box.setVisible(kind == "busca")
         self.btn_add.setVisible(kind == "inicio")
+        v_here = where[2] if kind == "volume" else None
+        self.btn_undo.setVisible(bool(v_here) and self._can_undo(v_here))
+        self.btn_org.setVisible(bool(v_here) and v_here.status == "ok" and not self._can_undo(v_here))
+        self.btn_extract.setVisible(bool(v_here) and v_here.status == "compactado")
         self._set_crumbs()
         rows, mode, notice = [], "colecao", ""
         if kind == "inicio":
@@ -518,7 +643,8 @@ class VegetacaoPage(QWidget):
             self.section.setText("Espécies" if v.especies else "")
             rows, mode = [self._esp_row(c, v, e) for e in v.especies], "especie"
             if v.status == "compactado":
-                notice = f"Este volume ainda está compactado ({v.aviso}).\nA extração entra na etapa \"Organizar\"."
+                notice = (f"Este volume ainda está compactado ({v.aviso}).\nClique em \"Extrair volume…\" para "
+                          "extrair; os compactados ficam onde estão até você organizar o volume.")
             elif v.status == "corrompido" and not v.especies:
                 notice = f"Compactado corrompido ou fora do padrão: {v.aviso}.\nÉ preciso baixar de novo."
             elif v.status == "corrompido":
@@ -563,6 +689,7 @@ class VegetacaoPage(QWidget):
                 parts.append(f"<a href='{i}' style='color:{link}; text-decoration:none'>{n}</a>")
         self.crumbs.setText(f"<span style='color:{sep}'> › </span>".join(parts))
         self.crumbs.setVisible(len(names) > 1)
+        self.btn_back.setVisible(len(names) > 1)
 
     def _activate(self, ix):
         r = ix.data(Qt.UserRole)
@@ -575,12 +702,18 @@ class VegetacaoPage(QWidget):
         r = ix.data(Qt.UserRole)
         self.side.show_file(r["vol"], r["esp"], r["arq"])
 
+    def go_back(self):
+        """Sobe um nível (seta no topo, Backspace, Esc). Na busca, volta para onde estava antes de buscar."""
+        if self.where[0] == "inicio":
+            return
+        if self.where[0] == "busca":
+            self.search.edit.clear()
+        else:
+            self.go(self._level(len(self.where) - 2))
+
     def keyPressEvent(self, e):
-        if e.key() in (Qt.Key_Backspace, Qt.Key_Escape) and self.where[0] not in ("inicio",):
-            if self.where[0] == "busca":
-                self.search.edit.clear()
-            else:
-                self.go(self._level(len(self.where) - 2))
+        if e.key() in (Qt.Key_Backspace, Qt.Key_Escape) and self.where[0] != "inicio":
+            self.go_back()
             return
         super().keyPressEvent(e)
 
@@ -632,10 +765,19 @@ class VegetacaoPage(QWidget):
         elif "arq" in r:
             m.addAction("Mostrar na pasta", lambda: show_in_folder(r["arq"].path))
         elif r.get("go") and r["go"][0] == "volume":
-            v = r["go"][2]
+            c, v = r["go"][1], r["go"][2]
             m.addAction("Mostrar na pasta", lambda: show_in_folder(v.path))
             if v.pdf:
                 m.addAction("Abrir o PDF do volume", lambda: open_file(v.pdf))
+            if not v.capa and v.pdf:
+                m.addAction("Criar capa a partir do PDF", lambda: self.cover_from_pdf(c, v))
+            m.addSeparator()
+            if self._can_undo(v):
+                m.addAction("Desfazer organização…", lambda: self.undo_volume(v))
+            elif v.status == "ok":
+                m.addAction("Organizar volume…", lambda: self.organize_volume(c, v))
+            elif v.status == "compactado":
+                m.addAction("Extrair volume…", lambda: self.extract_volume(c, v))
         if not m.isEmpty():
             m.exec(self.grid.viewport().mapToGlobal(pos))
 
