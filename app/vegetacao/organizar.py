@@ -6,8 +6,12 @@
       <prefixo> - Maps/            texturas
       <prefixo> - PDF/             PDF do volume + capas das espécies
       <prefixo> - Outros/          tudo que não tem lugar no padrão (a pessoa escolhe manter ou descartar)
-      _DESCARTADOS/                o que sai (versão repetida, cena com malhas, V-Ray com Corona, compactado extraído…)
       archiva.json                 marca de organizado + diário de tudo que foi feito (para desfazer)
+
+O que sai (versão repetida, cena com malhas, V-Ray com Corona, compactado extraído…) vai para
+<coleção>/_DESCARTADOS/<nome do volume>/ (uma pasta de descartados por coleção, não uma por volume). Volumes
+organizados antes da 2.0.19 têm o _DESCARTADOS por dentro; o desfazer deles continua funcionando (o diário
+guarda os caminhos completos).
 
 Regras de segurança:
   * planejar() só lê. aplicar() nunca apaga nada: move (mesma unidade = renomear), copia prévias e escreve
@@ -56,6 +60,7 @@ class Plano:
     motivo: str = ""
     passos: list[Passo] = field(default_factory=list)
     conflitos: list[str] = field(default_factory=list)
+    descarte: str = ""                 # pasta dos descartados deste volume: <coleção>/_DESCARTADOS/<volume>
     itens: dict = field(default_factory=dict)        # nome.max → {tipo, render, forest_pack} (o nome da pasta se perde)
 
     def por_grupo(self) -> dict[str, list[Passo]]:
@@ -164,7 +169,8 @@ def planejar(col_key: str, vol_path: str, cover_dir: str) -> Plano:
     plano = Plano(vol_path, pre)
     D = {g: os.path.join(vol_path, f"{pre} - {g}") for g in (MESH, MAPS, PDF, OUTROS)}
     D[PROXY] = os.path.join(D[MESH], f"{pre} - Proxy")
-    D[DESC] = os.path.join(vol_path, DESCARTE)
+    D[DESC] = os.path.join(os.path.normpath(cover_dir), DESCARTE, name)
+    plano.descarte = D[DESC]
 
     if os.path.isfile(os.path.join(vol_path, JOURNAL)):
         plano.status, plano.motivo = "bloqueado", "Este volume já está organizado."
@@ -419,7 +425,7 @@ def aplicar(plano: Plano, descartar_outros: set[str] | None = None, progress=Non
     descartar_outros = {os.path.normcase(p) for p in (descartar_outros or ())}
     vol = plano.volume
     journal = {"padrao": PADRAO, "prefixo": plano.prefixo, "inicio": time.time(), "itens": plano.itens,
-               "passos": []}
+               "descarte": plano.descarte, "passos": []}
     partial = os.path.join(vol, JOURNAL + ".parcial")
 
     def save(path):
@@ -433,7 +439,7 @@ def aplicar(plano: Plano, descartar_outros: set[str] | None = None, progress=Non
         dest = p.destino
         acao = p.acao
         if p.grupo == OUTROS and os.path.normcase(p.origem) in descartar_outros:
-            dest = os.path.join(vol, DESCARTE, os.path.relpath(p.destino, os.path.join(vol, f"{plano.prefixo} - Outros")))
+            dest = os.path.join(plano.descarte, os.path.relpath(p.destino, os.path.join(vol, f"{plano.prefixo} - Outros")))
             acao = "descartar"
         if os.path.exists(dest):
             raise FileExistsError(f"Já existe: {dest}")
@@ -508,7 +514,9 @@ def desfazer(vol_path: str, progress=None) -> int:
         if progress:
             progress(i + 1, len(steps))
     created_roots = {os.path.join(vol_path, f"{journal['prefixo']} - {g}") for g in (MESH, MAPS, PDF, OUTROS)}
-    created_roots.add(os.path.join(vol_path, DESCARTE))
+    created_roots.add(os.path.join(vol_path, DESCARTE))            # volumes organizados antes da 2.0.19
+    if journal.get("descarte"):
+        created_roots.add(journal["descarte"])
     for root in created_roots:
         for dp, _, _ in sorted(os.walk(root, topdown=False), key=lambda t: -len(t[0])):
             try:
@@ -516,4 +524,10 @@ def desfazer(vol_path: str, progress=None) -> int:
             except OSError:
                 pass
     os.remove(path)
+    pai = os.path.dirname(journal.get("descarte") or "")
+    if pai and os.path.basename(pai).casefold() == DESCARTE.casefold():
+        try:
+            os.rmdir(pai)            # a pasta da coleção só some se ficou vazia (outros volumes podem ter descartes lá)
+        except OSError:
+            pass
     return len(steps)

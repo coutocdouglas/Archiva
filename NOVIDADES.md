@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.19
+- **Uma pasta `_DESCARTADOS` por coleção.** O que sai ao organizar um volume agora vai para `Maxtree\_DESCARTADOS\<nome do volume>` (ou `Globe Plants\_DESCARTADOS\…`), em vez de uma pasta dentro de cada volume. **Desfazer organização** continua voltando tudo como estava, e a pasta some quando fica vazia. Volumes já organizados antes continuam funcionando e podem ser desfeitos normalmente.
+- **Janela de organizar refeita** no estilo do programa: cartões coloridos por grupo (Mesh, Maps, Outros, Descartados…), com a pasta de destino de cada um, e seções no lugar das abas.
+- **Capa pela 1ª página do PDF, automática.** Volume sem imagem própria ganha um jpg na pasta da coleção, com o mesmo nome da pasta do volume (ex.: `Maxtree - Plant Models Vol 032.jpg`). Nunca sobrescreve uma imagem que já existe.
+
 ## 2.0.18
 - **Vegetação: o arrasto para o 3ds Max agora funciona.** Na 2.0.17 os cartões dos arquivos não começavam a arrastar. Arraste o cartão para a viewport do Max e escolha **Merge**.
 

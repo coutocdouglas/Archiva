@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QLab
 from .. import segundo_plano, theme, ui
 from ..config import data_dir
 from ..janela import TITLE_H
-from . import arrastar_ui, leitor, organizar
+from . import arrastar_ui, capas, leitor, organizar
 
 ui._ICONS.setdefault("vegetacao", '<path d="M12 21V11"/><path d="M12 11C12 7 9 5 5 5c0 4 3 6 7 6z"/>'
                                   '<path d="M12 14c0-3 2-5 6-5 0 3-2 5-6 5z"/>')
@@ -447,7 +447,9 @@ class VegetacaoPage(QWidget):
         paths = list(self.paths)
 
         def work():
-            return [leitor.read_collection(p) for p in paths if os.path.isdir(p)]
+            cols = [leitor.read_collection(p) for p in paths if os.path.isdir(p)]
+            capas.garantir(cols)       # volume sem imagem própria: 1ª página do PDF vira o jpg ao lado da pasta
+            return cols
 
         def done(cols):
             self._scanning = False
@@ -534,7 +536,7 @@ class VegetacaoPage(QWidget):
             return
         QMessageBox.information(self, "Organizar",
                                 f"{v.rotulo} organizado: {len(journal['passos'])} movimentos.\n\nO que saiu está em "
-                                "_DESCARTADOS dentro do volume. \"Desfazer organização\" volta tudo como estava.")
+                                f"_DESCARTADOS da coleção ({c.nome}). \"Desfazer organização\" volta tudo como estava.")
         self.rescan()
 
     def undo_volume(self, v):

@@ -95,6 +95,12 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Não testado por mim: soltar de fato no 3ds Max (o 3dsmaxbatch pede a licença da Autodesk). O caminho é o mesmo da Biblioteca (Merge › `#filePostMerge` › religar as que faltam).
 - Atenção para a etapa 4: o desfazer da organização (etapa 2) não conhece a pasta `- Proxy`; se ela for criada depois de organizar, o desfazer deve deixá-la (ou levá-la junto) sem perder os proxies.
 
+## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
+- `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
+- Janela de organizar (`conferencia.py`) refeita no estilo do programa.
+- Capa automática: `app/vegetacao/capas.py` grava `<coleção>\<nome do volume>.jpg` (1ª página do PDF) na leitura, só quando não existe imagem.
+- **Pendente (2.0.20): receber coleções novas.** Pasta de entrada fixa do usuário: `F:\COLECOES\_ENTRADAS`. Janela dentro da Vegetação lista zips/rars em partes/pastas dali, sugere Maxtree ou Globe Plants pelo nome, e **move** (rar em partes juntos; entre discos: copiar, conferir tamanho, só então tirar da origem) para a pasta da coleção, ainda compactado; daí o fluxo existente Extrair › Organizar. Nada é renomeado sozinho; só avisar quando faltar "Vol NNN"/"Bundle NN".
+
 ## Pedidos para a próxima versão
 - ✅ (2.0.16) **Seta de voltar no topo** da aba Vegetação (pedido do usuário depois da 2.0.15): ao lado das migalhas, uma seta "‹" que sobe um nível (arquivos › espécies › volumes › coleções › início). Na busca, volta para onde estava antes de buscar. Esconder no início.
 
