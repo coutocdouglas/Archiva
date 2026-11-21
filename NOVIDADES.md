@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.17
+- **Vegetação: arrastar para o 3ds Max.** No último nível (os arquivos de uma espécie), arraste o cartão para a viewport do 3ds Max e escolha **Merge**. Logo depois do Merge, o Archiva liga as texturas à pasta **Maps** do volume, pelo nome do arquivo, e grava o caminho na cena. O resumo aparece no MAXScript Listener (F11).
+- **Versão a importar: Mesh | Proxy**, no painel da direita. O padrão é **Proxy**: quando o arquivo já tem proxy (selo **mesh + proxy**), vai o proxy; quando ainda não tem, vai a malha e o painel avisa. A criação automática do proxy chega numa próxima versão.
+- A Biblioteca não mudou.
+
 ## 2.0.16
 - **Vegetação: organizar volumes.** Dentro de um volume, **Organizar volume…** mostra antes uma simulação com o que vai para cada pasta: **Mesh** (os .max, cada um com a prévia ao lado), **Maps**, **PDF** (o PDF e as capas das espécies) e **Outros**. Em **Outros** fica o que não tem lugar no padrão, e você marca o que quer mandar para **_DESCARTADOS** (desmarcado = manter). Nada é apagado: o que sai (versão repetida, cena num volume que já tem as malhas, V-Ray quando existe a Corona, compactado já extraído, Thumbs.db) vai para `_DESCARTADOS` dentro do próprio volume.
 - **Desfazer organização** volta o volume exatamente como estava, arquivo por arquivo.

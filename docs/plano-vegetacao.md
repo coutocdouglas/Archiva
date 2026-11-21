@@ -85,6 +85,15 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Testado: organizar › ler › desfazer em todos os 24 volumes organizáveis (esqueleto) e no Bundle 65, cópias reais dos Vol 001 e 004 (byte a byte), extração de zip, rar em partes e rar corrompido, e o fluxo inteiro pela página.
 - Ainda não feito: esvaziar `_DESCARTADOS` (apagar de vez) e organizar vários volumes de uma vez.
 
+## Etapa 3 entregue (2.0.17)
+- `app/vegetacao/arrastar.py` (sem Qt): decide o que vai para o Max e grava o aviso `ultimo_arrasto.txt` do `archiva_texturas.ms` (o mesmo da Biblioteca, sem mudança). O aviso leva a pasta do .max, a do proxy e **as pastas Maps do volume** com subpastas (critério do leitor: "maps" no caminho; sem Maps, todas as pastas do volume). Pula `_DESCARTADOS`, `- Outros` e extrações em andamento.
+- `app/vegetacao/arrastar_ui.py`: seletor **Versão a importar** (Mesh | Proxy) no painel lateral e o arrasto dos cartões do nível 4 (só deles). A preferência fica em `%APPDATA%\GerenciadorAssets3D\vegetacao_arrasto.json`; padrão Proxy.
+- Proxy: o .max pequeno numa pasta `… - Proxy` (ou `Proxy`) ao lado do .max da malha, **com o mesmo nome** do .max original; o `.cproxy` fica junto. O leitor agora liga esse .max ao arquivo (selo "mesh + proxy") e não o mostra como malha nova. Sem proxy pronto, Proxy leva a malha e o painel avisa. **A etapa 4 deve criar o proxy exatamente nesse lugar e com esse nome.**
+- Os .max Maxtree/Globe guardam cada textura só pelo nome (stream `FileAssetMetaData3`) e trazem o material dentro (CoronaMtl/Multi), inclusive os da biblioteca Forest Pack; o `matlib\*.mat` não é necessário para o arrasto.
+- Testado: leitura das duas coleções reais idêntica antes e depois da mudança no leitor (384 espécies, 2.331 arquivos); para todos os 2.323 .max com lista de texturas, **108.106 de 109.966 texturas (98,3%)** achadas pelo nome nas pastas do aviso. As que faltam não existem em lugar nenhum das coleções (Vol 130 incompleto, `UV_Checker.png`, cópias "- Copy"). Fluxo pela página numa cópia (volume não organizado e volume no padrão com `- Proxy`), todas as páginas abrindo.
+- Não testado por mim: soltar de fato no 3ds Max (o 3dsmaxbatch pede a licença da Autodesk). O caminho é o mesmo da Biblioteca (Merge › `#filePostMerge` › religar as que faltam).
+- Atenção para a etapa 4: o desfazer da organização (etapa 2) não conhece a pasta `- Proxy`; se ela for criada depois de organizar, o desfazer deve deixá-la (ou levá-la junto) sem perder os proxies.
+
 ## Pedidos para a próxima versão
 - ✅ (2.0.16) **Seta de voltar no topo** da aba Vegetação (pedido do usuário depois da 2.0.15): ao lado das migalhas, uma seta "‹" que sobe um nível (arquivos › espécies › volumes › coleções › início). Na busca, volta para onde estava antes de buscar. Esconder no início.
 

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QLab
 from .. import segundo_plano, theme, ui
 from ..config import data_dir
 from ..janela import TITLE_H
-from . import leitor, organizar
+from . import arrastar_ui, leitor, organizar
 
 ui._ICONS.setdefault("vegetacao", '<path d="M12 21V11"/><path d="M12 11C12 7 9 5 5 5c0 4 3 6 7 6z"/>'
                                   '<path d="M12 14c0-3 2-5 6-5 0 3-2 5-6 5z"/>')
@@ -207,6 +207,13 @@ class _Grid(QListView):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.setStyleSheet("QListView{background:transparent;border:none;}")
         self.setCursor(Qt.PointingHandCursor)
+        self.setDragEnabled(True)                   # etapa 3: cartões do nível 4 vão para o 3ds Max
+        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.page = None
+
+    def startDrag(self, actions):
+        if self.page is not None:
+            arrastar_ui.start_drag(self.page, self)
 
 
 # =========================================================================== painel lateral (nível 4)
@@ -242,6 +249,8 @@ class _Side(ui.Glass):
         self.rows.setVerticalSpacing(6)
         self.rows.setColumnStretch(1, 1)
         lay.addWidget(self.rows_box)
+        self.versao = arrastar_ui.SeletorVersao()
+        lay.addWidget(self.versao)
         lay.addSpacing(4)
         self.btn_folder = QPushButton("Mostrar na pasta")
         self.btn_folder.setCursor(Qt.PointingHandCursor)
@@ -286,6 +295,7 @@ class _Side(ui.Glass):
         name.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.rows.addWidget(name, len(rows), 0, 1, 2)
         self.btn_pdf.setVisible(bool(vol.pdf))
+        self.versao.show_file(arq)
         self.refresh_image()
 
     def refresh_image(self):
@@ -392,6 +402,7 @@ class VegetacaoPage(QWidget):
 
         self.model = _CardModel()
         self.grid = _Grid()
+        self.grid.page = self
         self.grid.setModel(self.model)
         self.delegate = _CardDelegate(self)
         self.grid.setItemDelegate(self.delegate)

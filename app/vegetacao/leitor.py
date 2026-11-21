@@ -272,6 +272,7 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
     images_loose: dict[str, list[str]] = collections.defaultdict(list)
     previews: list[str] = []                                            # imagens fora de pastas de textura
     proxies: dict[str, str] = {}
+    proxy_maxes: dict[str, str] = {}                                    # .max da pasta "- Proxy"
     indexes: list[str] = []
     archives: list[tuple[str, int]] = []
     pdfs: list[str] = []
@@ -280,6 +281,8 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
         dns[:] = sorted((d for d in dns if not _skip_dir(d)), key=natural_key)
         parts = _parts(dp, path)
         in_maps = any("maps" in p for p in parts)
+        # pasta "- Proxy" (etapa 4): o .max pequeno de lá é o proxy do .max de mesmo nome, não uma malha nova
+        in_proxy = bool(parts) and any(p == "proxy" or p == "proxies" or p.endswith(" - proxy") for p in parts)
         for fn in fns:
             low = fn.casefold()
             if low in IGNORED_FILES:
@@ -287,6 +290,12 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
             full = os.path.join(dp, fn)
             stem, ext = os.path.splitext(fn)
             ext = ext.lower()
+            if in_proxy:
+                if ext == ".max":
+                    proxy_maxes[stem.casefold()] = full
+                elif ext in PROXY_EXT:
+                    proxies.setdefault(stem.casefold(), full)
+                continue
             if ext == ".max":
                 tipo, render = _classify(parts, stem)
                 info = itens.get(fn.casefold())
@@ -355,7 +364,7 @@ def read_volume(col_key: str, path: str, name: str, cover_dir: str) -> Volume | 
                         break
     # 2) mesmo nome  3) nome quase igual  4) cena01 ↔ cena01_1
     for m in maxes:
-        m["proxy"] = proxies.get(m["stem"].casefold())
+        m["proxy"] = proxy_maxes.get(m["stem"].casefold()) or proxies.get(m["stem"].casefold())
         if m.get("preview"):
             continue
         st = m["stem"].casefold()
