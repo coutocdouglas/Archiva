@@ -108,6 +108,11 @@ def _collapse_double(rel: str) -> str:
     return os.sep.join(out)
 
 
+def _in_proxy(parts: list[str]) -> bool:
+    """Pasta de proxies (mesmo critério do leitor): "Proxy", "Proxies" ou "… - Proxy"."""
+    return any(p == "proxy" or p == "proxies" or p.endswith(" - proxy") for p in parts)
+
+
 def prefix_for(col_key: str, vol_key: str) -> str:
     m = re.search(r"(\d+)$", vol_key)
     n = int(m.group(1)) if m else 0
@@ -199,7 +204,7 @@ def planejar(col_key: str, vol_path: str, cover_dir: str) -> Plano:
                 continue
             files.append(full)
             stem, ext = os.path.splitext(fn)
-            if ext.lower() == ".max":
+            if ext.lower() == ".max" and not _in_proxy(leitor._parts(dp, vol_path)):
                 parts = leitor._parts(dp, vol_path)
                 tipo, render = leitor._classify(parts, stem)
                 maxes.append({"path": full, "stem": stem, "tipo": tipo, "render": render, "parts": parts,
@@ -299,6 +304,8 @@ def planejar(col_key: str, vol_path: str, cover_dir: str) -> Plano:
         rel = _collapse_double(_rel(f, vol_path))
         if fn.casefold() in leitor.IGNORED_FILES:
             add("descartar", f, os.path.join(D[DESC], rel), DESC, "arquivo de miniaturas do Windows")
+        elif _in_proxy(parts) and (ext == ".max" or ext in leitor.PROXY_EXT):
+            add("mover", f, os.path.join(D[PROXY], fn), PROXY, "proxy")
         elif ext == ".max":
             if os.path.normcase(f) in to_mesh:
                 add("mover", f, os.path.join(D[MESH], fn), MESH)
@@ -513,6 +520,8 @@ def desfazer(vol_path: str, progress=None) -> int:
                 os.remove(dest)          # só arquivos que o próprio Archiva criou
         if progress:
             progress(i + 1, len(steps))
+    from . import proxy        # etapa 4: proxies criados depois de organizar (fora do diário)
+    proxy.guardar_no_desfazer(vol_path, journal)
     created_roots = {os.path.join(vol_path, f"{journal['prefixo']} - {g}") for g in (MESH, MAPS, PDF, OUTROS)}
     created_roots.add(os.path.join(vol_path, DESCARTE))            # volumes organizados antes da 2.0.19
     if journal.get("descarte"):

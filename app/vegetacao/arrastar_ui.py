@@ -56,6 +56,11 @@ class SeletorVersao(QWidget):
         self.hint.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:9pt;")
         lay.addWidget(self.hint)
         self.arq = None
+        try:
+            from . import proxy
+            proxy.instalar()       # o script do proxy já fica no Max na próxima vez que ele abrir
+        except Exception:  # noqa: BLE001
+            pass
 
     def _changed(self, i):
         self.preferida = self.seg.options[i][1]
@@ -71,11 +76,19 @@ class SeletorVersao(QWidget):
         if a is None:
             self.note.setText("")
             return
+        from . import proxy
         if arrastar.versao_efetiva(a, self.preferida) == arrastar.PROXY:
             text = "Vai o proxy (Corona Proxy, leve na cena)."
+        elif self.preferida == arrastar.PROXY and proxy.pode_criar(a):
+            text = ("Ainda não há proxy: vai a malha e, ao soltar com Merge, o 3ds Max cria o proxy na pasta "
+                    "\"- Proxy\" do volume (precisa do Corona). Depois use Atualizar.")
+            if not proxy.script_ja_carregado():
+                text += " Se o 3ds Max já estava aberto, feche e abra de novo uma vez."
+            r = proxy.resultado(a.path)
+            if r and r[0] == "erro":
+                text += f"\nÚltima tentativa: {r[1]}"
         elif self.preferida == arrastar.PROXY:
-            text = ("Ainda não há proxy deste arquivo: vai a malha (Mesh). A criação automática do proxy "
-                    "chega numa próxima versão.")
+            text = "Ainda não há proxy deste arquivo: vai a malha (Mesh)."
         else:
             text = "Vai a malha original (Mesh)."
         self.note.setText(text)

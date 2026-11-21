@@ -9,8 +9,8 @@ Plants guardam cada textura só pelo nome (ex.: MT_PM_V71_Alpinia_purpurata_01_L
 ficam na pasta Maps do volume (- Maps no padrão de pastas; MT_PM_V71_Maps ou Maps nos volumes não organizados).
 
 Versão a importar: Mesh (o .max original) ou Proxy (o .max pequeno da pasta "- Proxy", que aponta para o
-.cproxy). O Proxy é a preferência padrão; enquanto o proxy de um arquivo não existe, o arrasto leva a malha e o
-painel avisa (a criação automática do proxy é a etapa 4).
+.cproxy). O Proxy é a preferência padrão; enquanto o proxy de um arquivo não existe, o arrasto leva a malha e
+deixa o pedido para o 3ds Max criar o proxy depois do Merge (etapa 4, proxy.py).
 
 Este módulo não usa Qt: só decide o que arrastar e grava o aviso.
 """
@@ -95,6 +95,15 @@ def preparar(vol, esp, arq, preferida: str) -> tuple[str | None, str]:
     from .. import max_startup
     max_startup.write_handoff(nome_do_aviso(esp, arq, versao), path, dirs[:MAX_DIRS])
     msg = f"{esp.nome} · {arq.rotulo}: solte na viewport do 3ds Max e escolha Merge."
-    if preferida == PROXY and versao == MESH:
-        msg += " Ainda não há proxy deste arquivo: vai a malha (Mesh)."
+    from . import proxy        # etapa 4: sem proxy pronto, o Max cria o proxy depois do Merge
+    if preferida == PROXY and versao == MESH and proxy.pode_criar(arq):
+        proxy.instalar()
+        if proxy.pedir(arq.path, nome_do_aviso(esp, arq, PROXY)):
+            msg += " Ainda não há proxy: vai a malha e o 3ds Max cria o proxy na pasta \"- Proxy\" (precisa do Corona)."
+        else:
+            msg += " Ainda não há proxy deste arquivo: vai a malha (Mesh)."
+    else:
+        proxy.cancelar()
+        if preferida == PROXY and versao == MESH:
+            msg += " Ainda não há proxy deste arquivo: vai a malha (Mesh)."
     return path, msg
