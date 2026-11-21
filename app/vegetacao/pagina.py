@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QLab
 from .. import segundo_plano, theme, ui
 from ..config import data_dir
 from ..janela import TITLE_H
-from . import arrastar_ui, capas, leitor, organizar
+from . import arrastar_ui, capas, leitor, organizar, receber_ui
 
 ui._ICONS.setdefault("vegetacao", '<path d="M12 21V11"/><path d="M12 11C12 7 9 5 5 5c0 4 3 6 7 6z"/>'
                                   '<path d="M12 14c0-3 2-5 6-5 0 3-2 5-6 5z"/>')
@@ -381,6 +381,11 @@ class VegetacaoPage(QWidget):
         self.btn_add = ui.primary(QPushButton("Adicionar coleção"))
         self.btn_add.clicked.connect(self.add_collection)
         head.addWidget(self.btn_add, 0, Qt.AlignBottom)
+        self.btn_receive = QPushButton("Receber coleções…")       # 2.0.20: da pasta de entrada para a coleção
+        self.btn_receive.setToolTip("Leva o que você baixou na pasta de entrada para a coleção certa")
+        self.btn_receive.setCursor(Qt.PointingHandCursor)
+        self.btn_receive.clicked.connect(lambda: receber_ui.abrir(self))
+        head.insertWidget(head.indexOf(self.btn_add), self.btn_receive, 0, Qt.AlignBottom)
         main.addLayout(head)
         main.addSpacing(10)
 
@@ -628,6 +633,7 @@ class VegetacaoPage(QWidget):
         self.search.setVisible(kind in ("inicio", "busca"))
         self.chips_box.setVisible(kind == "busca")
         self.btn_add.setVisible(kind == "inicio")
+        self.btn_receive.setVisible(kind == "inicio" and bool(self.cols))
         v_here = where[2] if kind == "volume" else None
         self.btn_undo.setVisible(bool(v_here) and self._can_undo(v_here))
         self.btn_org.setVisible(bool(v_here) and v_here.status == "ok" and not self._can_undo(v_here))
@@ -818,6 +824,7 @@ class VegetacaoPage(QWidget):
         self.side.hide()
         self.search.show()
         self.btn_add.hide()
+        self.btn_receive.hide()
         self.chips_box.show()
         self._set_crumbs()
         self.title.setText("Busca")

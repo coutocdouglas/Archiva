@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.20
+- **Vegetação: Receber coleções…** (no início da aba, ao lado de Adicionar coleção). Mostra o que você baixou na pasta de entrada (`F:\COLECOES\_ENTRADAS`, ou a que você escolher) agrupado por volume: as partes do rar e o PDF do mesmo volume vão juntos. Para cada volume, o Archiva sugere a coleção (Maxtree ou Globe Plants) e o nome da pasta no padrão (`Maxtree - Plant Models Vol 160`, `Globe Plants – Bundle 70`). Você confere, troca se quiser e clica em **Mover**.
+- O volume chega na coleção ainda compactado; abra-o e use **Extrair volume…** e depois **Organizar volume…**.
+- Avisa quando falta uma parte do rar, quando o nome não diz o volume ou a coleção, e não deixa mover o que ainda está baixando. Também completa um volume que já existe (por exemplo, a parte que faltava), desde que nenhum arquivo tenha o mesmo nome. Nada é apagado.
+
 ## 2.0.19
 - **Uma pasta `_DESCARTADOS` por coleção.** O que sai ao organizar um volume agora vai para `Maxtree\_DESCARTADOS\<nome do volume>` (ou `Globe Plants\_DESCARTADOS\…`), em vez de uma pasta dentro de cada volume. **Desfazer organização** continua voltando tudo como estava, e a pasta some quando fica vazia. Volumes já organizados antes continuam funcionando e podem ser desfeitos normalmente.
 - **Janela de organizar refeita** no estilo do programa: cartões coloridos por grupo (Mesh, Maps, Outros, Descartados…), com a pasta de destino de cada um, e seções no lugar das abas.
