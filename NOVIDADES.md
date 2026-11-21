@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.18
+- **Vegetação: o arrasto para o 3ds Max agora funciona.** Na 2.0.17 os cartões dos arquivos não começavam a arrastar. Arraste o cartão para a viewport do Max e escolha **Merge**.
+
 ## 2.0.17
 - **Vegetação: arrastar para o 3ds Max.** No último nível (os arquivos de uma espécie), arraste o cartão para a viewport do 3ds Max e escolha **Merge**. Logo depois do Merge, o Archiva liga as texturas à pasta **Maps** do volume, pelo nome do arquivo, e grava o caminho na cena. O resumo aparece no MAXScript Listener (F11).
 - **Versão a importar: Mesh | Proxy**, no painel da direita. O padrão é **Proxy**: quando o arquivo já tem proxy (selo **mesh + proxy**), vai o proxy; quando ainda não tem, vai a malha e o painel avisa. A criação automática do proxy chega numa próxima versão.

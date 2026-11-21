@@ -97,6 +97,12 @@ class _CardModel(QAbstractListModel):
             return r.get("tip")
         return None
 
+    def flags(self, index):
+        f = super().flags(index)
+        if index.isValid() and "arq" in self.rows[index.row()]:
+            f |= Qt.ItemIsDragEnabled          # sem isto o Qt nem começa o arrasto (etapa 3)
+        return f
+
 
 SIZES = {          # largura do cartão, altura da imagem
     "colecao": (360, 170),
