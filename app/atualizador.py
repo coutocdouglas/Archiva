@@ -65,7 +65,57 @@ class CheckThread(QThread):
             notes = (data.get("body") or "").strip()
             self.found.emit(tag.lstrip("vV"), url or "", notes[:800])
         except Exception as e:  # noqa: BLE001 — sem internet, GitHub fora etc.: só não avisa
+            # plano B: a API recusou (ex.: limite de 60 consultas por hora por conexão). A página de versões
+            # não tem esse limite. Com token (repositório privado) não há plano B.
+            if not self.token:
+                try:
+                    res = pela_pagina()
+                except Exception:  # noqa: BLE001
+                    res = None
+                if res:
+                    ver, url, notes = res
+                    if is_newer(ver, self.current):
+                        self.found.emit(ver, url, notes[:800])
+                    else:
+                        self.uptodate.emit(ver)
+                    return
             self.failed.emit(str(e))
+
+
+ASSET = "Archiva-Setup-{ver}.exe"         # nome do instalador em cada versão (workflow "Publicar versão")
+DOWNLOAD = f"https://github.com/{REPO}/releases/download/{{tag}}/{ASSET}"
+NOTES = f"https://raw.githubusercontent.com/{REPO}/main/NOVIDADES.md"
+
+
+def notas_da_versao(texto: str, ver: str) -> str:
+    """A seção "## <ver>" do NOVIDADES.md (é o mesmo texto da página da versão)."""
+    m = re.search(rf"^## {re.escape(ver)}\s*$(.*?)(?=^## |\Z)", texto, re.M | re.S)
+    return m.group(1).strip() if m else ""
+
+
+def pela_pagina(timeout: float = 15) -> tuple[str, str, str] | None:
+    """Última versão sem usar a API: github.com/.../releases/latest redireciona para .../tag/vX.Y.Z. O instalador
+    tem endereço fixo (confere que existe) e as notas vêm do NOVIDADES.md. Devolve (versão, url, notas)."""
+    h = {"User-Agent": UA["User-Agent"]}
+    with _open(PAGE, h, timeout) as r:
+        final = r.geturl()
+    m = re.search(r"/releases/tag/(v?[\d.]+)$", final.rstrip("/"))
+    if not m:
+        return None
+    tag = m.group(1)
+    ver = tag.lstrip("vV")
+    url = DOWNLOAD.format(tag=tag, ver=ver)
+    req = urllib.request.Request(url, headers=h, method="HEAD")
+    with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as r:
+        if r.status >= 400:
+            return None
+    notes = ""
+    try:
+        with _open(NOTES, h, timeout) as r:
+            notes = notas_da_versao(r.read().decode("utf-8", "replace"), ver)
+    except Exception:  # noqa: BLE001 — sem as notas, o aviso sai assim mesmo
+        pass
+    return ver, url, notes
 
 
 class DownloadThread(QThread):

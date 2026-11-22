@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.25
+- **Procurar atualizações não falha mais por excesso de consultas.** O GitHub limita as consultas sem login por conexão de internet (60 por hora); quando o limite estourava, aparecia "Não foi possível consultar o GitHub agora". Agora, se a consulta for recusada, o Archiva confere a versão pela página normal de versões do GitHub, que não tem esse limite, e o aviso de atualização aparece do mesmo jeito.
+
 ## 2.0.24
 - **Vegetação: prévia grande com a barra de espaço**, como na Biblioteca. Vale para os cartões de coleção, volume (a capa), espécie e arquivo. Clique, Esc ou espaço fecham.
 - **Bolinha roxa** nos volumes que ainda precisam ser organizados, e na coleção que tem algum. Passe o mouse para ver quantos faltam.
