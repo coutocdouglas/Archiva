@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QLab
 from .. import segundo_plano, theme, ui
 from ..config import data_dir
 from ..janela import TITLE_H
-from . import arrastar_ui, capas, leitor, organizar, receber_ui
+from . import arrastar_ui, capas, leitor, marcas, marcas_ui, organizar, receber_ui
 
 ui._ICONS.setdefault("vegetacao", '<path d="M12 21V11"/><path d="M12 11C12 7 9 5 5 5c0 4 3 6 7 6z"/>'
                                   '<path d="M12 14c0-3 2-5 6-5 0 3-2 5-6 5z"/>')
@@ -150,6 +150,8 @@ class _CardDelegate(QStyledItemDelegate):
             p.setPen(QPen(QColor(255, 255, 255, 215), 1.6))
             p.setBrush(theme.ORG)
             p.drawEllipse(dot)
+        if r.get("fav"):              # etapa 5: favorito (só para esta pessoa)
+            marcas_ui.paint_card_star(p, img)
         if sel:
             theme.paint_selection(p, box, 14)
         x, w = box.left() + 13, box.width() - 26
@@ -257,6 +259,13 @@ class _Side(ui.Glass):
         self.sub.setWordWrap(True)
         self.sub.setStyleSheet(f"color:{theme.MUTED.name()};")
         lay.addWidget(self.sub)
+        self.btn_fav = marcas_ui.FavButton(page)          # etapa 5: favorito e tags da espécie
+        lay.addWidget(self.btn_fav, 0, Qt.AlignLeft)
+        self.tags_head = ui.heading("Tags da planta", 10)
+        lay.addWidget(self.tags_head)
+        self.tags = marcas_ui.TagBox(page)
+        self.tags.changed.connect(page.marks_changed)
+        lay.addWidget(self.tags)
         from PySide6.QtWidgets import QGridLayout
         self.rows_box = QWidget()
         self.rows = QGridLayout(self.rows_box)
@@ -287,6 +296,9 @@ class _Side(ui.Glass):
         f.setItalic(not esp.grupo)
         self.title.setFont(f)
         self.sub.setText(f"{vol.rotulo} · {arq.rotulo}")
+        key = marcas.chave_especie(vol, esp)
+        self.btn_fav.show_key(key)
+        self.tags.show_key(key)
         tipo = {"mesh": "Malha (mesh)", "cena": "Cena", "conjunto": "Conjunto"}.get(arq.tipo, arq.tipo)
         render = arq.render or ("escolhido pela biblioteca Forest Pack" if arq.forest_pack else "não informado")
         rows = [("Renderizador", render), ("Tipo", tipo), ("Arquivo", human_size(arq.size)),
@@ -340,6 +352,7 @@ class VegetacaoPage(QWidget):
         self._scanning = False
         self._scanned = False
         self.index_path = os.path.join(str(window.cache_root), INDEX_FILE)
+        self.favs = marcas.Favoritos()          # etapa 5: favoritos pessoais (tags ficam no banco da equipe)
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(40, TITLE_H + 8, 32, 16)
@@ -411,6 +424,24 @@ class VegetacaoPage(QWidget):
         self.chips_row.setContentsMargins(0, 6, 0, 0)
         main.addWidget(self.chips_box)
         main.addSpacing(6)
+        # etapa 5: faixa de Favoritos na primeira página (plantas e volumes, o mais recente primeiro)
+        self.fav_head = ui.heading("Favoritos", 10)
+        main.addWidget(self.fav_head)
+        self.fav_model = _CardModel()
+        self.fav_grid = _Grid()
+        self.fav_grid.setFlow(QListView.LeftToRight)
+        self.fav_grid.setWrapping(False)
+        self.fav_grid.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.fav_grid.horizontalScrollBar().setSingleStep(24)
+        self.fav_grid.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.fav_grid.setModel(self.fav_model)
+        self.fav_delegate = _CardDelegate(self)
+        self.fav_delegate.mode = "especie"
+        self.fav_grid.setItemDelegate(self.fav_delegate)
+        self.fav_grid.setFixedHeight(SIZES["especie"][1] + 76 + 22)
+        self.fav_grid.clicked.connect(self._activate)
+        self.fav_grid.customContextMenuRequested.connect(lambda pos: self._menu(pos, self.fav_grid))
+        main.addWidget(self.fav_grid)
         self.section = ui.heading("", 10)
         main.addWidget(self.section)
 
@@ -682,6 +713,7 @@ class VegetacaoPage(QWidget):
         self.btn_undo.setVisible(bool(v_here) and self._can_undo(v_here))
         self.btn_org.setVisible(bool(v_here) and v_here.status == "ok" and not self._can_undo(v_here))
         self.btn_extract.setVisible(bool(v_here) and v_here.status == "compactado")
+        self._fill_favs(kind == "inicio")
         self._set_crumbs()
         rows, mode, notice = [], "colecao", ""
         if kind == "inicio":
@@ -819,12 +851,13 @@ class VegetacaoPage(QWidget):
             sub = f"{plural(v.n_especies, 'espécie', 'espécies')} · {plural(v.n_arquivos, 'arquivo', 'arquivos')}"
         falta = _falta_organizar(v)
         return {"title": v.rotulo, "img": v.capa, "go": ("volume", c, v), "sub": sub, "badge": badge,
-                "dot": falta, "placeholder": "capa no PDF" if v.pdf else "sem capa",
+                "dot": falta, "key": marcas.chave_volume(v), "fav": marcas.chave_volume(v) in self.favs, "placeholder": "capa no PDF" if v.pdf else "sem capa",
                 "tip": v.path + ("\nAinda por organizar (botão direito › Organizar volume…)" if falta else "")}
 
     def _esp_row(self, c, v, e):
+        k = marcas.chave_especie(v, e)
         return {"title": e.nome, "italic": not e.grupo, "img": e.capa, "go": ("especie", c, v, e),
-                "sub": plural(len(e.arquivos), "arquivo", "arquivos")}
+                "sub": plural(len(e.arquivos), "arquivo", "arquivos"), "key": k, "fav": k in self.favs}
 
     def _arq_row(self, v, e, a):
         if a.tipo != "mesh":
@@ -834,12 +867,18 @@ class VegetacaoPage(QWidget):
         return {"title": a.rotulo, "img": a.preview, "sub": human_size(a.size), "badge": badge,
                 "vol": v, "esp": e, "arq": a, "tip": os.path.basename(a.path)}
 
-    def _menu(self, pos):
-        ix = self.grid.indexAt(pos)
+    def _menu(self, pos, grid=None):
+        grid = grid or self.grid
+        ix = grid.indexAt(pos)
         if not ix.isValid():
             return
         r = ix.data(Qt.UserRole)
         m = QMenu(self)
+        if r.get("key"):                       # etapa 5: espécie ou volume (também na faixa de Favoritos)
+            self._marks_menu(m, r)
+            if grid is self.fav_grid:
+                m.exec(grid.viewport().mapToGlobal(pos))
+                return
         if "col" in r:
             c = r["col"]
             m.addAction("Mostrar na pasta", lambda: show_in_folder(c.path))
@@ -847,6 +886,11 @@ class VegetacaoPage(QWidget):
             m.addSeparator()
             m.addAction("Tirar da Vegetação (não apaga nada)", lambda: self.remove_collection(c))
         elif "arq" in r:
+            k = marcas.chave_especie(r["vol"], r["esp"])
+            fav = k in self.favs
+            m.addAction("Tirar a planta dos favoritos" if fav else "Favoritar a planta", lambda: self.toggle_fav(k))
+            m.addAction("Tags da planta…", lambda: self.edit_tags(k, r["esp"].nome))
+            m.addSeparator()
             m.addAction("Mostrar na pasta", lambda: show_in_folder(r["arq"].path))
         elif r.get("go") and r["go"][0] == "volume":
             c, v = r["go"][1], r["go"][2]
@@ -864,7 +908,90 @@ class VegetacaoPage(QWidget):
             elif v.status == "compactado":
                 m.addAction("Extrair volume…", lambda: self.extract_volume(c, v))
         if not m.isEmpty():
-            m.exec(self.grid.viewport().mapToGlobal(pos))
+            m.exec(grid.viewport().mapToGlobal(pos))
+
+    # ------------------------------------------------------------------ favoritos e tags (etapa 5)
+    def _marks_menu(self, m, r):
+        k = r["key"]
+        what = "o volume" if r["go"][0] == "volume" else "a planta"
+        m.addAction(f"Tirar {what} dos favoritos" if k in self.favs else f"Favoritar {what}",
+                    lambda: self.toggle_fav(k))
+        m.addAction("Tags…", lambda: self.edit_tags(k, r["title"]))
+        m.addSeparator()
+
+    def toggle_fav(self, key: str):
+        on = self.favs.toggle(key)
+        self.marks_changed()
+        try:
+            self.w.statusBar().showMessage("Nos favoritos." if on else "Fora dos favoritos.", 4000)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def edit_tags(self, key: str, nome: str):
+        marcas_ui.TagsDialog(self, key, nome).exec()
+        self.marks_changed()
+
+    def marks_changed(self):
+        """Favorito ou tag mudou: estrelas dos cartões, faixa e painel."""
+        for r in self.model.rows:
+            if r.get("key"):
+                r["fav"] = r["key"] in self.favs
+        self.grid.viewport().update()
+        self._fill_favs(self.where[0] == "inicio")
+        if self.side.isVisible():
+            self.side.btn_fav.show_key(self.side.btn_fav.key)
+            self.side.tags.refresh()
+
+    def _fill_favs(self, show: bool):
+        rows = []
+        if show:
+            for k in self.favs.keys:
+                w = marcas.resolver(self.cols, k)
+                if not w:
+                    continue          # coleção fora da Vegetação ou ainda não lida: o favorito fica guardado
+                if w[0] == "volume":
+                    r = self._vol_row(w[1], w[2])
+                    r["sub"] = f"{w[1].nome} · {r['sub']}"
+                else:
+                    r = self._esp_row(*w[1:])
+                    r["sub"] = f"{w[2].rotulo} · {w[1].nome}"
+                r["badge"], r["dot"] = None, False
+                rows.append(r)
+        self.fav_model.set_rows(rows)
+        self.fav_head.setVisible(bool(rows))
+        self.fav_grid.setVisible(bool(rows))
+
+    def _search_tags(self, text: str) -> list:
+        """Espécies com uma tag que contém o texto (ou de um volume com essa tag)."""
+        from ..scanner import normalize
+        q = normalize(text).split()
+        if not q:
+            return []
+        out = []
+        for t, keys in marcas.todas(self.w.db).items():
+            if not all(x in normalize(t) for x in q):
+                continue
+            for k in keys:
+                w = marcas.resolver(self.cols, k)
+                if not w:
+                    continue
+                if w[0] == "especie":
+                    out.append(w[1:])
+                else:
+                    out.extend((w[1], w[2], e) for e in w[2].especies)
+        return out
+
+    def open_key(self, key: str) -> bool:
+        """Abre a Vegetação no lugar da chave (vindo da aba Tags)."""
+        w = marcas.resolver(self.cols, key)
+        if not w:
+            return False
+        self.search.edit.blockSignals(True)
+        self.search.edit.clear()
+        self.search.edit.blockSignals(False)
+        self.w.tabs.setCurrentWidget(self)
+        self.go(w)
+        return True
 
     # ------------------------------------------------------------------ busca
     def _do_search(self):
@@ -877,6 +1004,11 @@ class VegetacaoPage(QWidget):
             self.before_search = self.where
         self.where = ("busca",)
         res = leitor.search(self.cols, text)
+        seen = {(r[1].key, r[2].key) for r in res}
+        for r in self._search_tags(text):          # etapa 5: também pelas tags
+            if (r[1].key, r[2].key) not in seen:
+                seen.add((r[1].key, r[2].key))
+                res.append(r)
         counts = {c.key: sum(1 for r in res if r[0] is c) for c in self.cols}
         if self.search_filter and self.search_filter not in counts:
             self.search_filter = ""
@@ -894,8 +1026,9 @@ class VegetacaoPage(QWidget):
                          if res else "Nenhuma espécie encontrada")
         self.section.setText("")
         self._fill_chips(len(res), counts)
-        rows = [{"title": e.nome, "italic": True, "img": e.capa, "go": ("especie", c, v, e),
-                 "sub": f"{v.rotulo} · {c.nome}"} for c, v, e in shown]
+        rows = [{"title": e.nome, "italic": not e.grupo, "img": e.capa, "go": ("especie", c, v, e),
+                 "sub": f"{v.rotulo} · {c.nome}", "key": marcas.chave_especie(v, e),
+                 "fav": marcas.chave_especie(v, e) in self.favs} for c, v, e in shown]
         self.delegate.mode = "especie"
         self.model.set_rows(rows)
         self.grid.setVisible(bool(rows))

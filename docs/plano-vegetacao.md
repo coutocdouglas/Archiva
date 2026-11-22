@@ -55,7 +55,7 @@ Favoritos e tags usam chave por coleção/volume/espécie (ex.: `veg:maxtree/071
 | 2 | Organizar: pôr cada volume no **padrão de pastas** (seção abaixo). O que não tem lugar no padrão vai para `- Outros`, e o usuário escolhe manter ou descartar. Descartes das decisões da etapa 0 (versão repetida, cena em volume com malhas, V-Ray quando há Corona, compactado já extraído); gerar capa do jpg ou da página 1 do PDF (QtPdf); tudo que sai vai para _DESCARTADOS com tela de conferência, desfazer e modo simulação. Testar primeiro num volume copiado | Opus |
 | 3 | Arrastar para o Max com as texturas da pasta Maps do volume, com o seletor de versão | Opus |
 | 4 | Proxy automático (.cgeo + .max pequeno na pasta `- Proxy`, dentro da pasta `- Mesh` do volume) | Opus |
-| 5 | Favoritos (plantas e volumes), tags e seção Vegetação na aba Tags | Sonnet |
+| 5 | ✅ (2.0.26) Favoritos (plantas e volumes), tags e seção Vegetação na aba Tags | Sonnet |
 | 6 | Futuro: escolher no arrasto criar Forest Pack ou Scatter a partir do bloco | Opus |
 
 ## Proxy
@@ -122,6 +122,15 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - `app/vegetacao/recorte.py`: na página renderizada, o maior bloco de linhas "cheias" (≥ 60% da largura diferente da cor da borda), depois as colunas cheias, estendendo para cima/baixo enquanto há foto nas duas bordas (céu claro). Testado nos 28 PDFs das coleções: 25 recortados certo, 3 (Vol 1, 3, 4) já são foto inteira e ficam. `organizar.capa_pdf` usa o recorte. `capas.recortar_antigas` troca uma vez as capas de 1600 px com a proporção da página (as que o Archiva gravou), antiga para `_DESCARTADOS`; conferidas em `vegetacao_capas_conferidas.json`.
 - Proxy: `malhaCompleta` põe `previzType = 3` (o nome e o valor são palpite: na 1ª vez da sessão o script mostra `showProperties` do Corona Proxy no Listener para conferir). Vale para o proxy criado e para o proxy pronto que é arrastado.
 - O `.max` da pasta `- Proxy` não é cópia da malha: é pequeno (só o objeto Corona Proxy com o material) e é o que o arrasto leva. Sem ele, cada arrasto teria de abrir a malha inteira para pegar o material.
+
+## Etapa 5 entregue (2.0.26): favoritos, tags e seção Vegetação na aba Tags
+- `app/vegetacao/marcas.py` (sem Qt): chaves estáveis do leitor (`veg:maxtree/071/phoenix-canariensis`, `veg:maxtree/071`), `resolver` (chave → lugar na página).
+- **Favoritos pessoais**: `%APPDATA%\GerenciadorAssets3D\vegetacao_favoritos.json` (mais recente primeiro). Favorito de coleção fora da Vegetação fica guardado e volta a aparecer quando ela for lida.
+- **Tags compartilhadas** no mesmo `TagDB` da Biblioteca, com a chave `#veg:…`: o banco já tira das contagens, do filtro, das coleções e da nuvem tudo o que começa com `#`, então a Biblioteca não muda (conferido no código antigo e no novo). Cada mudança vira evento para a equipe como as outras tags. Sem biblioteca escolhida o banco é temporário (em memória).
+- Atenção: renomear/excluir uma tag **pela Biblioteca** (aba Tags, fora da pasta Vegetação) vale pelo nome e leva junto os itens da Vegetação com o mesmo nome. Pela pasta Vegetação, só os itens da Vegetação mudam.
+- `app/vegetacao/marcas_ui.py`: botão Favoritar e caixa de tags (como a da Biblioteca) no painel; Tags… no botão direito; estrela desenhada nos cartões (a fonte do programa não tem ★). `pagina.py`: faixa Favoritos no início, menus, busca também pelas tags (tag de volume traz as espécies dele).
+- `app/vegetacao/tags_veg.py`: a pasta "Vegetação" na tela principal de Tags › uma pasta por tag › cartões (planta/volume); clique abre na Vegetação. Na `tags_page.py`, só ganchos: terceira tela da pilha, item "veg" no início, voltar/migalhas e o selo "vegetação" no desenho da pasta.
+- Testado (cópia do Vol 071 em esqueleto, offscreen): aba Tags da Biblioteca com estado idêntico antes/depois (pastas, grupo, busca, galeria, menus, filtro, completar), também com tags `#veg:` no banco; favoritar/tirar por menu e painel, faixa, tags por painel/janela, busca por tag, seção nas Tags (abrir, voltar, renomear, excluir, tirar), favoritos e tags depois de organizar o volume, arrasto com o mouse, teste da 2.0.24 inteiro, todas as páginas abrindo.
 
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).

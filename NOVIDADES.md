@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.26
+- **Vegetação: favoritos.** Botão direito numa planta ou num volume › **Favoritar**, ou o botão **Favoritar** no painel da planta. Os favoritos ganham uma estrela no cartão e aparecem numa faixa **Favoritos** no início da aba, acima das coleções. Os favoritos são só seus (cada computador tem os dele).
+- **Vegetação: tags.** No painel da planta, digite as tags e Enter (várias separadas por vírgula); clique numa tag para tirá-la. Para volumes (e também plantas), botão direito › **Tags…**. As tags valem para toda a equipe, como as da Biblioteca, e a busca da Vegetação também acha pelas tags.
+- **Aba Tags: pasta Vegetação.** As tags das plantas e volumes ficam numa pasta própria, **Vegetação**, separada das tags da Biblioteca. Clique num cartão para abrir a planta ou o volume na aba Vegetação. Renomear ou excluir uma tag ali vale só para a Vegetação.
+- Favoritos e tags continuam valendo depois de organizar um volume.
+
 ## 2.0.25
 - **Procurar atualizações não falha mais por excesso de consultas.** O GitHub limita as consultas sem login por conexão de internet (60 por hora); quando o limite estourava, aparecia "Não foi possível consultar o GitHub agora". Agora, se a consulta for recusada, o Archiva confere a versão pela página normal de versões do GitHub, que não tem esse limite, e o aviso de atualização aparece do mesmo jeito.
 

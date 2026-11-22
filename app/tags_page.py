@@ -76,8 +76,8 @@ class FolderDelegate(QStyledItemDelegate):
         tab_h = 12
         tab = QPainterPath()
         tab.addRoundedRect(QRectF(r.left(), r.top(), r.width() * 0.42, tab_h + 10), 8, 8)
-        tab_col = QColor("#8a6a4c") if kind == "group" else body_col.lighter(135)
-        if kind == "group":
+        tab_col = QColor("#8a6a4c") if kind in ("group", "veg") else body_col.lighter(135)
+        if kind in ("group", "veg"):
             tab_col.setAlpha(230)
         p.fillPath(tab, tab_col)
         body = QRectF(r.left(), r.top() + tab_h, r.width(), r.height() - tab_h)
@@ -119,19 +119,20 @@ class FolderDelegate(QStyledItemDelegate):
         p.setPen(theme.MUTED)
         p.drawText(QRectF(x, panel.bottom() + 12 + fm.height(), tw, 20), Qt.AlignLeft | Qt.AlignVCenter,
                    index.data(COUNT_ROLE) or "")
-        if kind == "group":
+        if kind in ("group", "veg"):
+            pill_text = "grupo" if kind == "group" else "vegetação"
             f3 = QFont(option.font)
             f3.setPointSizeF(7.5)
             f3.setBold(True)
             p.setFont(f3)
             fm3 = QFontMetrics(f3)
-            pill = QRectF(body.right() - fm3.horizontalAdvance("grupo") - 30, panel.bottom() + 14,
-                          fm3.horizontalAdvance("grupo") + 16, 18)
+            pill = QRectF(body.right() - fm3.horizontalAdvance(pill_text) - 30, panel.bottom() + 14,
+                          fm3.horizontalAdvance(pill_text) + 16, 18)
             path = QPainterPath()
             path.addRoundedRect(pill, 9, 9)
             p.fillPath(path, QColor(227, 207, 169, 40))
             p.setPen(theme.LOGO)
-            p.drawText(pill, Qt.AlignCenter, "grupo")
+            p.drawText(pill, Qt.AlignCenter, pill_text)
         p.restore()
 
 
@@ -322,6 +323,10 @@ class TagsPage(QWidget):
         self.gallery.customContextMenuRequested.connect(self._gallery_menu)
         self.gallery.setToolTip("Arraste para o 3ds Max · duplo clique abre na Biblioteca · botão direito: capa e opções")
         self.stack.addWidget(self.gallery)
+        from .vegetacao.tags_veg import VegTagsView      # seção Vegetação (módulo da Vegetação)
+        self.veg = VegTagsView(self)
+        self.veg_open = False
+        self.stack.addWidget(self.veg)
 
         self.w.thumbs.changed.connect(lambda: self._repaint_timer.start())
         self._repaint_timer = QTimer(self, singleShot=True, interval=80)
@@ -369,6 +374,9 @@ class TagsPage(QWidget):
     # ----------------------------------------------------------------- navegação
     def refresh(self):
         self._collect()
+        if self.veg_open:
+            self._show_veg()
+            return
         if self.tag is not None and self.tag not in self._tagged:
             self.tag = None
         if self.group is not None and self.group not in self.w.db.groups():
@@ -380,12 +388,18 @@ class TagsPage(QWidget):
 
     def open_tag(self, tag: str):
         self._collect()
+        self.veg_open = False
         self.tag = tag
         self.group = self.w.db.group_map().get(tag)
         self.w.tabs.setCurrentWidget(self)
         self._show_gallery()
 
     def go_back(self):
+        if self.veg_open:
+            if not self.veg.back():
+                self.veg_open = False
+            self.refresh()
+            return
         if self.tag is not None:
             self.tag = None
         elif self.group is not None:
@@ -393,8 +407,11 @@ class TagsPage(QWidget):
         self.refresh()
 
     def _crumb_link(self, link: str):
-        if link == "root":
+        if link == "veg":
+            self.veg.tag = None
+        elif link == "root":
             self.tag, self.group = None, None
+            self.veg_open = False
         elif link == "group":
             self.tag = None
         self.refresh()
@@ -494,6 +511,11 @@ class TagsPage(QWidget):
             it.setData(COUNT_ROLE, f"{len(members)} {'tag' if len(members) == 1 else 'tags'}  ·  {n_items} itens")
             it.setToolTip(f"Grupo {g}")
             self.folders.addItem(it)
+        if self.group is None and not q:
+            from .vegetacao import tags_veg
+            veg_item = tags_veg.folder_item(self)
+            if veg_item is not None:
+                self.folders.insertItem(0, veg_item)
         for t in sort_tags(tags):
             self.folders.addItem(tag_item(t))
 
@@ -542,7 +564,12 @@ class TagsPage(QWidget):
             self.gallery.scrollToTop()
 
     def _open_item(self, it: QListWidgetItem):
-        if it.data(KIND_ROLE) == "group":
+        if it.data(KIND_ROLE) == "veg":
+            self.veg_open = True
+            self.veg.tag = None
+            self.find.clear()
+            self.refresh()
+        elif it.data(KIND_ROLE) == "group":
             self.group = it.data(NAME_ROLE)
             self.find.clear()
             self.refresh()
@@ -555,6 +582,21 @@ class TagsPage(QWidget):
         if self.isVisible():
             self.folders.viewport().update()
             self.gallery.viewport().update()
+            self.veg.folders.viewport().update()
+            self.veg.grid.viewport().update()
+
+    def _show_veg(self):
+        """Seção Vegetação (tags das plantas e volumes): a tela é da tags_veg.py."""
+        self._shown_tag = None
+        self.stack.setCurrentIndex(2)
+        self.sync_side()
+        for wdg in (self.find, self.new_group, self.lib_btn, self.tag_menu_btn):
+            wdg.setVisible(False)
+        parts, sub = self.veg.refresh()
+        self.sort.setVisible(self.veg.tag is None)
+        self.back.setVisible(True)
+        self._crumbs(*parts)
+        self.sub.setText(sub)
 
     # ----------------------------------------------------------------- menus e ações
     def _folders_menu(self, pos):
@@ -565,6 +607,8 @@ class TagsPage(QWidget):
                 m.addAction("Novo grupo…", self._create_group)
             else:
                 m.addAction("Voltar", self.go_back)
+        elif it.data(KIND_ROLE) == "veg":
+            m.addAction("Abrir", lambda: self._open_item(it))
         elif it.data(KIND_ROLE) == "group":
             g = it.data(NAME_ROLE)
             m.addAction("Abrir", lambda: self._open_item(it))
