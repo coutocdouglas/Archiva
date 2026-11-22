@@ -111,6 +111,10 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - `app/vegetacao/capa_manual.py`: botão direito › **Escolher capa…** na coleção (`<coleção>\_capa.jpg`, que o leitor passa a preferir) e no volume (`<coleção>\<volume>.jpg`). PDF → 1ª página; png e outras → jpg. A capa anterior (e `.jpeg`/`.png` do mesmo volume) vai para `<coleção>\_DESCARTADOS\<volume>\… (capa anterior <data>)`.
 - Testado em cópias, sem janelas: leitura e planos dos 58 volumes idênticos; script gerado (Merge, alvo, pastas, acentos, BOM, parênteses); capa de png/jpg/PDF, recusas, troca com descarte; programa inteiro offscreen com arrasto pelo mouse e menu do botão direito. **Não testado por mim: o script dentro do 3ds Max** (Merge sem menu, posição no ponto do mouse, criação do proxy).
 
+## 2.0.23: assinatura do Corona
+- Listener do usuário (Corona no Max 2024): `<integer>fromScene <node>proxy <node>node <filename>filename` — **um objeto por vez**, não uma lista. A 2.0.22 passava `#(n)` e o Corona respondia "Unable to convert … to type: <node>". Corrigido para `CProxy.ProxyFp.fromScene p n f` (a lista ficou como segunda tentativa). O Merge automático, a posição e as texturas funcionaram no Max do usuário (69 arquivos religados).
+- O Corona também oferece `fromSceneAnimated`, `originalMaterialName`, `originalObjectName` e `duplicateToMesh` (proxy de volta para malha).
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.

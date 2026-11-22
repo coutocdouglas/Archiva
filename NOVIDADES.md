@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.23
+- **Vegetação: o proxy automático é criado de verdade.** Na 2.0.22 o Corona recusava o pedido ("Unable to convert … to type: <node>") e a malha ficava na cena. Com **Proxy** escolhido, ao soltar o cartão no 3ds Max o Corona Proxy agora é gravado na pasta **- Proxy** do volume e entra na cena no lugar da malha.
+
 ## 2.0.22
 - **Vegetação: o modelo entra sozinho no 3ds Max, sem o menu Merge.** Arraste o cartão para a viewport: o Archiva faz o Merge na hora, no ponto onde você soltou, deixa o modelo selecionado e liga as texturas à pasta Maps do volume. Vale para Mesh e para Proxy. O resumo aparece no MAXScript Listener (F11).
 - **O proxy automático agora funciona.** Na 2.0.21 o 3ds Max não avisava quando o arquivo era solto na viewport, e o proxy não era criado. Agora, com **Proxy** escolhido e sem proxy pronto, vai a malha e, em seguida, o Max cria o Corona Proxy na pasta **- Proxy** do volume e põe o proxy na cena no lugar da malha. Use **Atualizar** para ver o selo **mesh + proxy**. Não precisa mais reabrir o 3ds Max.

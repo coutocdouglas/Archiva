@@ -186,8 +186,9 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 				local p = CProxy()
 				local okp = false
 				local e1 = ""
-				try (CProxy.ProxyFp.fromScene p #(n) f; okp = true) catch (e1 = getCurrentException())
-				if not okp do try (p.ProxyFp.fromScene p #(n) f; okp = true) catch ()
+				-- Corona: <integer>fromScene <node>proxy <node>node <filename>filename (um objeto por vez)
+				try (CProxy.ProxyFp.fromScene p n f; okp = true) catch (e1 = getCurrentException())
+				if not okp do try (CProxy.ProxyFp.fromScene p #(n) f; okp = true) catch ()
 				if okp and (doesFileExist f) then
 				(
 					append arquivos f
