@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.24
+- **Vegetação: prévia grande com a barra de espaço**, como na Biblioteca. Vale para os cartões de coleção, volume (a capa), espécie e arquivo. Clique, Esc ou espaço fecham.
+- **Bolinha roxa** nos volumes que ainda precisam ser organizados, e na coleção que tem algum. Passe o mouse para ver quantos faltam.
+- **Capa do PDF só com a foto.** A capa tirada da 1ª página do PDF agora fica só com a imagem, sem o título ("Plant Models Vol32"), o logotipo e a margem branca. As capas que o Archiva já tinha tirado com a página inteira são trocadas sozinhas na próxima leitura; a antiga vai para `_DESCARTADOS` da coleção. Páginas que já são uma foto inteira continuam como estão.
+- **O proxy entra na cena como malha completa** (Full mesh), e não como caixa, tanto ao ser criado quanto ao arrastar um proxy pronto.
+
 ## 2.0.23
 - **Vegetação: o proxy automático é criado de verdade.** Na 2.0.22 o Corona recusava o pedido ("Unable to convert … to type: <node>") e a malha ficava na cena. Com **Proxy** escolhido, ao soltar o cartão no 3ds Max o Corona Proxy agora é gravado na pasta **- Proxy** do volume e entra na cena no lugar da malha.
 

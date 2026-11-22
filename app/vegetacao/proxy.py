@@ -116,6 +116,23 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 		ok
 	)
 
+	-- proxy na viewport como malha completa (nao como caixa). O Corona chama a opcao de previzType;
+	-- os outros nomes sao so por garantia. Na 1a vez da sessao, mostra as propriedades no Listener.
+	fn malhaCompleta p =
+	(
+		global ArchivaProxyPropsVistas
+		if ArchivaProxyPropsVistas != true do
+		(
+			ArchivaProxyPropsVistas = true
+			format "   propriedades do Corona Proxy (para conferir a exibicao):\n"
+			try (showProperties p) catch ()
+		)
+		local feito = undefined
+		for nm in #(#previzType, #viewportDisplay, #displayMode, #vpDisplay) where feito == undefined and (hasProperty p nm) do
+			try (setProperty p nm 3; feito = nm) catch ()
+		feito
+	)
+
 	fn ehProcedural o =
 	(
 		local c = (classOf o) as string
@@ -196,6 +213,7 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 					p.name = n.name
 					p.wirecolor = n.wirecolor
 					p.material = n.material
+					malhaCompleta p
 					try (n.layer.addNode p) catch ()
 					classOf p      -- avalia o proxy (a caixa do .cproxy carregada antes de medir)
 					-- posicao: o .cproxy pode guardar a malha no espaco do objeto ou no do mundo; fica a que bate
@@ -291,6 +309,7 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 					local d = pt - [(mn.x + mx.x) / 2.0, (mn.y + mx.y) / 2.0, mn.z]
 					for o in novos where o.parent == undefined or (findItem novos o.parent) == 0 do move o d
 				)
+				for o in novos where classOf o == CProxy do malhaCompleta o      -- proxy ja pronto: mostra a malha
 				select novos
 				local rl = religar novos pastas
 				format "   % objeto(s) no Merge; % arquivo(s) religado(s) para a pasta do volume.\n" novos.count rl[1]

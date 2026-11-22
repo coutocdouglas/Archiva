@@ -130,6 +130,8 @@ def capa_pdf(path: str, largura: int = 1600) -> bytes | None:
             sz = doc.pagePointSize(0)
             img = doc.render(0, QSize(largura, int(largura * sz.height() / max(1.0, sz.width()))))
             if not img.isNull():
+                from . import recorte          # só a foto da página, sem título, logotipo e margem
+                img = recorte.so_a_foto(img)
                 buf = QByteArray()
                 dev = QBuffer(buf)
                 dev.open(QIODevice.WriteOnly)

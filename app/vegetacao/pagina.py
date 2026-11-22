@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QLabel, QListView, QMenu, QPushButton,
                                QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout, QWidget)
 
@@ -119,6 +119,11 @@ BADGE = {
 }
 
 
+def _falta_organizar(v) -> bool:
+    """Volume extraído e lido, mas ainda fora do padrão de pastas (a bolinha roxa)."""
+    return v.status == "ok" and not v.organizado and bool(v.especies)
+
+
 class _CardDelegate(QStyledItemDelegate):
     def __init__(self, page):
         super().__init__(page)
@@ -140,6 +145,11 @@ class _CardDelegate(QStyledItemDelegate):
         theme.paint_glass(p, box, 14, 1.0, hover)
         img = QRectF(box.left(), box.top(), box.width(), SIZES[self.mode][1])
         self._image(p, img, r.get("img"), r.get("placeholder", "sem prévia"), hover)
+        if r.get("dot"):              # bolinha roxa: falta organizar (a mesma cor da Biblioteca)
+            dot = QRectF(img.right() - 19, img.top() + 9, 10, 10)
+            p.setPen(QPen(QColor(255, 255, 255, 215), 1.6))
+            p.setBrush(theme.ORG)
+            p.drawEllipse(dot)
         if sel:
             theme.paint_selection(p, box, 14)
         x, w = box.left() + 13, box.width() - 26
@@ -420,6 +430,9 @@ class VegetacaoPage(QWidget):
         self.grid.clicked.connect(self._activate)
         self.grid.customContextMenuRequested.connect(self._menu)
         main.addWidget(self.grid, 1)
+        from PySide6.QtGui import QKeySequence, QShortcut
+        self._sc_space = QShortcut(QKeySequence(Qt.Key_Space), self.grid, context=Qt.WidgetShortcut)
+        self._sc_space.activated.connect(self.preview_big)     # espaço: prévia grande, como na Biblioteca
 
         self.side = _Side(self)
         outer.addWidget(self.side)
@@ -767,6 +780,16 @@ class VegetacaoPage(QWidget):
         else:
             self.go(self._level(len(self.where) - 2))
 
+    def preview_big(self):
+        """Espaço sobre um cartão (coleção, volume, espécie ou arquivo): a imagem grande, numa janela."""
+        ix = self.grid.currentIndex()
+        r = ix.data(Qt.UserRole) if ix.isValid() else None
+        path = r.get("img") if r else None
+        if not path or path.lower().endswith(".pdf") or not os.path.isfile(path):
+            return
+        from ..main_window import ImageViewer
+        ImageViewer(self, path, r.get("title", "")).exec()
+
     def keyPressEvent(self, e):
         if e.key() in (Qt.Key_Backspace, Qt.Key_Escape) and self.where[0] != "inicio":
             self.go_back()
@@ -776,9 +799,11 @@ class VegetacaoPage(QWidget):
     # ------------------------------------------------------------------ cartões
     def _col_row(self, c):
         vols = len(c.volumes)
-        return {"title": c.nome, "img": c.capa, "go": ("colecao", c), "col": c,
+        falta = sum(1 for v in c.volumes if _falta_organizar(v))
+        tip = c.path + (f"\n{plural(falta, 'volume', 'volumes')} ainda por organizar" if falta else "")
+        return {"title": c.nome, "img": c.capa, "go": ("colecao", c), "col": c, "dot": bool(falta),
                 "sub": f"{plural(vols, 'volume', 'volumes')} · {plural(c.n_especies, 'espécie', 'espécies')}",
-                "placeholder": "sem capa", "tip": c.path}
+                "placeholder": "sem capa", "tip": tip}
 
     def _vol_row(self, c, v):
         badge = None
@@ -792,8 +817,10 @@ class VegetacaoPage(QWidget):
             sub = f"{' e '.join(e.nome for e in v.especies)} · {plural(v.n_arquivos, 'arquivo', 'arquivos')}"
         else:
             sub = f"{plural(v.n_especies, 'espécie', 'espécies')} · {plural(v.n_arquivos, 'arquivo', 'arquivos')}"
+        falta = _falta_organizar(v)
         return {"title": v.rotulo, "img": v.capa, "go": ("volume", c, v), "sub": sub, "badge": badge,
-                "placeholder": "capa no PDF" if v.pdf else "sem capa", "tip": v.path}
+                "dot": falta, "placeholder": "capa no PDF" if v.pdf else "sem capa",
+                "tip": v.path + ("\nAinda por organizar (botão direito › Organizar volume…)" if falta else "")}
 
     def _esp_row(self, c, v, e):
         return {"title": e.nome, "italic": not e.grupo, "img": e.capa, "go": ("especie", c, v, e),

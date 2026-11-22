@@ -115,6 +115,14 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Listener do usuário (Corona no Max 2024): `<integer>fromScene <node>proxy <node>node <filename>filename` — **um objeto por vez**, não uma lista. A 2.0.22 passava `#(n)` e o Corona respondia "Unable to convert … to type: <node>". Corrigido para `CProxy.ProxyFp.fromScene p n f` (a lista ficou como segunda tentativa). O Merge automático, a posição e as texturas funcionaram no Max do usuário (69 arquivos religados).
 - O Corona também oferece `fromSceneAnimated`, `originalMaterialName`, `originalObjectName` e `duplicateToMesh` (proxy de volta para malha).
 
+## 2.0.24: prévia com espaço, bolinha roxa, capa recortada, proxy em Full mesh
+- 2.0.23 confirmada pelo usuário: o proxy é criado e entra na cena.
+- Espaço sobre qualquer cartão: `VegetacaoPage.preview_big` abre o `ImageViewer` da Biblioteca (reusado, sem mudar).
+- Bolinha roxa (`theme.ORG`, a mesma do "fora do padrão" da Biblioteca): volume `status == "ok"`, com espécies e sem `archiva.json`; na coleção, se algum volume está assim (dica com quantos).
+- `app/vegetacao/recorte.py`: na página renderizada, o maior bloco de linhas "cheias" (≥ 60% da largura diferente da cor da borda), depois as colunas cheias, estendendo para cima/baixo enquanto há foto nas duas bordas (céu claro). Testado nos 28 PDFs das coleções: 25 recortados certo, 3 (Vol 1, 3, 4) já são foto inteira e ficam. `organizar.capa_pdf` usa o recorte. `capas.recortar_antigas` troca uma vez as capas de 1600 px com a proporção da página (as que o Archiva gravou), antiga para `_DESCARTADOS`; conferidas em `vegetacao_capas_conferidas.json`.
+- Proxy: `malhaCompleta` põe `previzType = 3` (o nome e o valor são palpite: na 1ª vez da sessão o script mostra `showProperties` do Corona Proxy no Listener para conferir). Vale para o proxy criado e para o proxy pronto que é arrastado.
+- O `.max` da pasta `- Proxy` não é cópia da malha: é pequeno (só o objeto Corona Proxy com o material) e é o que o arrasto leva. Sem ele, cada arrasto teria de abrir a malha inteira para pegar o material.
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.
