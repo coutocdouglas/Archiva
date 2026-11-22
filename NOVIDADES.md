@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.27
+- **Vegetação: criar um Forest Pack ou um Chaos Scatter ao soltar a planta.** No painel da planta há a opção nova **Ao soltar, criar também**: *Nada*, *Forest* ou *Scatter*. Com Forest ou Scatter, a planta entra na cena como sempre (Mesh ou Proxy) e, junto dela, nasce um objeto Forest Pack ou Chaos Scatter **vazio**, já com a planta como item. Escolha a superfície ou a área no painel do plugin. Com Proxy, o próprio proxy vira o item (cena mais leve).
+- A escolha fica guardada. O resumo aparece no MAXScript Listener (F11). Na primeira vez de cada sessão do 3ds Max, o Listener mostra também as propriedades do objeto criado; se algo não ficar certo, mande esse texto.
+- O painel da planta agora rola quando a tela é baixa.
+
 ## 2.0.26
 - **Vegetação: favoritos.** Botão direito numa planta ou num volume › **Favoritar**, ou o botão **Favoritar** no painel da planta. Os favoritos ganham uma estrela no cartão e aparecem numa faixa **Favoritos** no início da aba, acima das coleções. Os favoritos são só seus (cada computador tem os dele).
 - **Vegetação: tags.** No painel da planta, digite as tags e Enter (várias separadas por vírgula); clique numa tag para tirá-la. Para volumes (e também plantas), botão direito › **Tags…**. As tags valem para toda a equipe, como as da Biblioteca, e a busca da Vegetação também acha pelas tags.

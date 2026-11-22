@@ -83,7 +83,7 @@ def nome_do_aviso(esp, arq, versao: str) -> str:
     return f"{esp.nome} · {arq.rotulo} ({'Proxy' if versao == PROXY else 'Mesh'})"
 
 
-def preparar(vol, esp, arq, preferida: str) -> tuple[str | None, str]:
+def preparar(vol, esp, arq, preferida: str, espalhar_modo: str = "nada") -> tuple[str | None, str]:
     """Decide o arquivo e grava o script que vai no arrasto (proxy.py): o Max faz o Merge sozinho, sem menu,
     religa as texturas às pastas do volume e, se foi pedido Proxy e ele ainda não existe, cria o proxy.
     Devolve (caminho do script .ms, mensagem)."""
@@ -105,7 +105,10 @@ def preparar(vol, esp, arq, preferida: str) -> tuple[str | None, str]:
                 os.remove(h)
         except OSError:
             pass
-    ms = proxy.gravar_soltar(path, dirs[:MAX_DIRS], nome_do_aviso(esp, arq, PROXY if criar else versao), criar)
+    from . import espalhar
+    espalhar_modo = espalhar.valido(espalhar_modo)
+    ms = proxy.gravar_soltar(path, dirs[:MAX_DIRS], nome_do_aviso(esp, arq, PROXY if criar else versao), criar,
+                             espalhar_modo, f"{esp.nome} {arq.rotulo}")
     if not ms:
         return None, f"{esp.nome}: não foi possível preparar o arrasto (pasta do Archiva sem acesso)."
     msg = f"{esp.nome} · {arq.rotulo}: solte na viewport do 3ds Max (entra sozinho, sem o menu Merge)."
@@ -113,4 +116,6 @@ def preparar(vol, esp, arq, preferida: str) -> tuple[str | None, str]:
         msg += " Ainda não há proxy: vai a malha e o 3ds Max cria o proxy na pasta \"- Proxy\" (precisa do Corona)."
     elif preferida == PROXY and versao == MESH:
         msg += " Este arquivo não tem proxy: vai a malha (Mesh)."
+    if espalhar_modo != espalhar.NADA:
+        msg += f" Também cria um {espalhar.ROTULO[espalhar_modo]} vazio com a planta."
     return ms, msg

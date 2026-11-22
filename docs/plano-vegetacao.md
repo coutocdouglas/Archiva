@@ -56,7 +56,7 @@ Favoritos e tags usam chave por coleção/volume/espécie (ex.: `veg:maxtree/071
 | 3 | Arrastar para o Max com as texturas da pasta Maps do volume, com o seletor de versão | Opus |
 | 4 | Proxy automático (.cgeo + .max pequeno na pasta `- Proxy`, dentro da pasta `- Mesh` do volume) | Opus |
 | 5 | ✅ (2.0.26) Favoritos (plantas e volumes), tags e seção Vegetação na aba Tags | Sonnet |
-| 6 | Futuro: escolher no arrasto criar Forest Pack ou Scatter a partir do bloco | Opus |
+| 6 | ✅ (2.0.27, falta conferir no Max) Escolher no arrasto criar Forest Pack ou Scatter a partir do bloco | Opus |
 
 ## Proxy
 - Só na Vegetação; a Biblioteca não muda.
@@ -131,6 +131,14 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - `app/vegetacao/marcas_ui.py`: botão Favoritar e caixa de tags (como a da Biblioteca) no painel; Tags… no botão direito; estrela desenhada nos cartões (a fonte do programa não tem ★). `pagina.py`: faixa Favoritos no início, menus, busca também pelas tags (tag de volume traz as espécies dele).
 - `app/vegetacao/tags_veg.py`: a pasta "Vegetação" na tela principal de Tags › uma pasta por tag › cartões (planta/volume); clique abre na Vegetação. Na `tags_page.py`, só ganchos: terceira tela da pilha, item "veg" no início, voltar/migalhas e o selo "vegetação" no desenho da pasta.
 - Testado (cópia do Vol 071 em esqueleto, offscreen): aba Tags da Biblioteca com estado idêntico antes/depois (pastas, grupo, busca, galeria, menus, filtro, completar), também com tags `#veg:` no banco; favoritar/tirar por menu e painel, faixa, tags por painel/janela, busca por tag, seção nas Tags (abrir, voltar, renomear, excluir, tirar), favoritos e tags depois de organizar o volume, arrasto com o mouse, teste da 2.0.24 inteiro, todas as páginas abrindo.
+
+## Etapa 6 (2.0.27): Forest Pack / Chaos Scatter ao soltar
+- Decidido com o usuário: o objeto do plugin nasce **vazio** (sem superfície/área), no ponto do mouse, com a planta como item; o modelo **fica visível** na cena como num arrasto normal.
+- `app/vegetacao/espalhar.py` (sem Qt): opções (`nada`/`forest`/`scatter`) e as funções MAXScript coladas no script do arrasto (`proxy.SOLTAR_SCRIPT`, marcador `$espalhar_fns`). Roda depois do Merge e do proxy: o que ficou na cena (o proxy, se foi criado) vira o item; vários objetos soltos viram um grupo.
+- Nem a Itoo nem a Chaos publicam referência de MAXScript (as páginas de documentação só descrevem a interface). Nomes tirados dos plugins instalados (cadeias do `ForestPackPro.dlo` e do `ScatterMax_Release-2024.dll`, e o `forestpack.ms`): Forest `Forest_Pro` com `cobjlist`/`namelist`/`problist`/`geomlist` (um por item); Scatter `ChaosScatter` com `modelNodes` (tenta também `models`, `instances`), `modelFrequencies`. **`geomlist = #(2)` para "objeto próprio" é palpite**: o Listener mostra o antes/depois e, na 1ª vez de cada sessão, `showProperties` do objeto criado. Qualquer erro deixa só o modelo na cena.
+- Painel: seletor **Ao soltar, criar também** (Nada | Forest | Scatter), guardado em `vegetacao_arrasto.json` (chave `espalhar`, sem perder `versao`). O painel lateral passou a rolar (QScrollArea).
+- Testado sem o Max: script gerado com parênteses e aspas equilibrados nos 3 modos; sem Forest/Scatter o script é o da 2.0.26 só com linhas a mais (nenhuma removida); testes da 2.0.24 (arrasto, proxy, capas) e da 2.0.26 (favoritos/tags, aba Tags da Biblioteca idêntica) passam; arrasto com o mouse levando "forest"/"scatter".
+- **Não testado por mim: dentro do 3ds Max.** No primeiro arrasto, conferir no Listener se o Forest/Scatter foi criado com a planta e pedir o texto das propriedades se não.
 
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).

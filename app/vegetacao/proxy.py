@@ -103,6 +103,8 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 	local nome = "$nome"
 	local resposta = @"$resposta"
 	local pastas = #($pastas)
+	local espalhar = "$espalhar"
+	local planta = "$planta"
 
 	fn responder resposta tipo malha texto =
 	(
@@ -260,6 +262,7 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 		)
 	)
 
+$espalhar_fns
 	try
 	(
 		format "\n-- Archiva: %\n" nome
@@ -324,6 +327,15 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 					format "   %\n" rp[2]
 					responder resposta (if rp[1] then "ok" else "erro") malha rp[2]
 				)
+				-- etapa 6: Forest Pack ou Chaos Scatter vazio, com a planta (o que ficou na cena) como item
+				if espalhar == "forest" or espalhar == "scatter" do
+				(
+					local fontes = if alvo != "" then (for o in selection where (isValidNode o) collect o) else novos
+					local re = #(false, "")
+					try (re = criarEspalhamento espalhar fontes pt planta)
+					catch (re = #(false, "erro ao criar o " + espalhar + ": " + (getCurrentException()) + ". Ficou so o modelo."))
+					format "   %\n" re[2]
+				)
 			)
 		)
 	)
@@ -348,8 +360,11 @@ def _ms_string(s: str) -> str:
     return (s or "").replace("\\", "\\\\").replace('"', "'").replace("\n", " ")
 
 
-def script_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: str | None) -> str:
-    """O texto do script que vai para o Max. criar_proxy_de: a malha cujo proxy deve ser criado (ou None)."""
+def script_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: str | None,
+                  espalhar_modo: str = "nada", planta: str = "") -> str:
+    """O texto do script que vai para o Max. criar_proxy_de: a malha cujo proxy deve ser criado (ou None).
+    espalhar_modo: "forest" | "scatter" cria também o objeto do plugin com a planta (etapa 6, espalhar.py)."""
+    from . import espalhar
     alvo = destino(criar_proxy_de) if criar_proxy_de else ""
     lista = ", ".join(f'@"{_ms_verbatim(d)}"' for d in pastas)
     rep = {
@@ -359,6 +374,9 @@ def script_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: st
         "$nome": _ms_string(nome),
         "$resposta": _ms_verbatim(_path(RESULTADO) or ""),
         "$pastas": lista,
+        "$espalhar_fns": espalhar.FUNCOES,
+        "$espalhar": espalhar.valido(espalhar_modo),
+        "$planta": _ms_string(planta or nome),
     }
     text = SOLTAR_SCRIPT
     for k, v in rep.items():
@@ -366,7 +384,8 @@ def script_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: st
     return text
 
 
-def gravar_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: str | None) -> str | None:
+def gravar_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: str | None,
+                  espalhar_modo: str = "nada", planta: str = "") -> str | None:
     """Grava o script do arrasto e devolve o caminho dele (é ele que vai no arrasto para o Max)."""
     p = _path(SOLTAR)
     if not p:
@@ -374,7 +393,7 @@ def gravar_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: st
     try:
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8-sig") as fh:     # o MaxScript lê UTF-8 com BOM (acentos nos caminhos)
-            fh.write(script_soltar(arquivo, pastas, nome, criar_proxy_de))
+            fh.write(script_soltar(arquivo, pastas, nome, criar_proxy_de, espalhar_modo, planta))
         return p
     except OSError:
         return None
