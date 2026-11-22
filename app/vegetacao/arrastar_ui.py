@@ -50,15 +50,15 @@ class SeletorVersao(QWidget):
         self.note.setWordWrap(True)
         self.note.setStyleSheet(f"color:{theme.MUTED.name()}; font-size:9pt;")
         lay.addWidget(self.note)
-        self.hint = QLabel("Arraste o cartão para a viewport do 3ds Max e escolha Merge. As texturas vêm da pasta "
-                           "Maps do volume.")
+        self.hint = QLabel("Arraste o cartão para a viewport do 3ds Max: ele entra sozinho onde você soltar, sem o "
+                           "menu Merge. As texturas vêm da pasta Maps do volume.")
         self.hint.setWordWrap(True)
         self.hint.setStyleSheet(f"color:{theme.FAINT.name()}; font-size:9pt;")
         lay.addWidget(self.hint)
         self.arq = None
         try:
             from . import proxy
-            proxy.instalar()       # o script do proxy já fica no Max na próxima vez que ele abrir
+            proxy.instalar()       # desliga o script de inicialização da 2.0.21, se ele existir
         except Exception:  # noqa: BLE001
             pass
 
@@ -80,10 +80,8 @@ class SeletorVersao(QWidget):
         if arrastar.versao_efetiva(a, self.preferida) == arrastar.PROXY:
             text = "Vai o proxy (Corona Proxy, leve na cena)."
         elif self.preferida == arrastar.PROXY and proxy.pode_criar(a):
-            text = ("Ainda não há proxy: vai a malha e, ao soltar com Merge, o 3ds Max cria o proxy na pasta "
+            text = ("Ainda não há proxy: vai a malha e, ao soltar, o 3ds Max cria o proxy na pasta "
                     "\"- Proxy\" do volume (precisa do Corona). Depois use Atualizar.")
-            if not proxy.script_ja_carregado():
-                text += " Se o 3ds Max já estava aberto, feche e abra de novo uma vez."
             r = proxy.resultado(a.path)
             if r and r[0] == "erro":
                 text += f"\nÚltima tentativa: {r[1]}"

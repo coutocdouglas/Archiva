@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.22
+- **Vegetação: o modelo entra sozinho no 3ds Max, sem o menu Merge.** Arraste o cartão para a viewport: o Archiva faz o Merge na hora, no ponto onde você soltou, deixa o modelo selecionado e liga as texturas à pasta Maps do volume. Vale para Mesh e para Proxy. O resumo aparece no MAXScript Listener (F11).
+- **O proxy automático agora funciona.** Na 2.0.21 o 3ds Max não avisava quando o arquivo era solto na viewport, e o proxy não era criado. Agora, com **Proxy** escolhido e sem proxy pronto, vai a malha e, em seguida, o Max cria o Corona Proxy na pasta **- Proxy** do volume e põe o proxy na cena no lugar da malha. Use **Atualizar** para ver o selo **mesh + proxy**. Não precisa mais reabrir o 3ds Max.
+- **Escolher capa…** no botão direito de uma coleção ou de um volume: aponte um PDF (vale a 1ª página) ou uma imagem (jpg, png…). A capa anterior não é apagada; ela vai para `_DESCARTADOS` da coleção.
+
 ## 2.0.21
 - **Vegetação: proxy automático.** Com **Proxy** escolhido em *Versão a importar*, arraste um arquivo que ainda não tem proxy e escolha **Merge**. Vai a malha e, logo depois, o 3ds Max cria o Corona Proxy: salva o `.cproxy` e um `.max` pequeno, com o mesmo nome da malha, na pasta **- Proxy** do volume, e põe o proxy na cena no lugar da malha. Use **Atualizar** e o cartão passa a mostrar **mesh + proxy**. Dali em diante, o arrasto leva o proxy.
 - Precisa do Corona. Arquivos com GrowFX ou Forest Pack continuam como malha. Se algo der errado, a malha fica na cena como estava, e o motivo aparece no painel e no MAXScript Listener (F11).

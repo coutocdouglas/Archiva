@@ -104,6 +104,13 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Testado (cópias em esqueleto, sem janelas): planos de organizar e leitura dos 58 volumes idênticos antes/depois; pedido/cancelamento; leitor liga o proxy sem criar arquivo novo; organizar › desfazer com proxies de antes e de depois (duas idas e voltas); programa inteiro offscreen (todas as páginas, painel, arrasto com o mouse).
 - **Não testado por mim: a parte dentro do 3ds Max** (o 3dsmaxbatch pede a licença). A chamada `CProxy.ProxyFp.fromScene` e a posição do proxy precisam ser conferidas no Max do usuário no primeiro arrasto.
 
+## 2.0.22: Merge automático, proxy refeito e capa manual
+- Na 2.0.21 o script respondeu "o Merge começou antes do pedido": o Max **não dispara `#filePreMerge`** quando um .max é solto na viewport, então o script não sabia o que tinha entrado.
+- Agora o cartão é arrastado como um script gerado na hora (`%LOCALAPPDATA%\Archivarrastar_vegetacao.ms`, `proxy.gravar_soltar`), que o Max executa ao soltar: guarda o maior handle, faz `mergeMAXFile … #select #autoRenameDups #renameMtlDups quiet:true` (sem menu), põe o que entrou no ponto do mouse no chão (z = 0 da vista ativa, `mapScreenToWorldRay mouse.pos`), religa texturas/proxies que faltam procurando pelo nome nas pastas do volume e, quando pedido, cria o proxy (mesmo código da 2.0.21). Não depende de nada instalado no Max. O aviso `ultimo_arrasto.txt` da Biblioteca é apagado a cada arrasto da Vegetação (não vale para ele).
+- O `archiva_proxy.ms` da 2.0.21 é trocado, onde existir, por um que só faz `callbacks.removeScripts id:#archivaProxy`.
+- `app/vegetacao/capa_manual.py`: botão direito › **Escolher capa…** na coleção (`<coleção>\_capa.jpg`, que o leitor passa a preferir) e no volume (`<coleção>\<volume>.jpg`). PDF → 1ª página; png e outras → jpg. A capa anterior (e `.jpeg`/`.png` do mesmo volume) vai para `<coleção>\_DESCARTADOS\<volume>\… (capa anterior <data>)`.
+- Testado em cópias, sem janelas: leitura e planos dos 58 volumes idênticos; script gerado (Merge, alvo, pastas, acentos, BOM, parênteses); capa de png/jpg/PDF, recusas, troca com descarte; programa inteiro offscreen com arrasto pelo mouse e menu do botão direito. **Não testado por mim: o script dentro do 3ds Max** (Merge sem menu, posição no ponto do mouse, criação do proxy).
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.

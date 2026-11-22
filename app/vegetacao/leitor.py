@@ -196,6 +196,9 @@ class Colecao:
 
     @property
     def capa(self) -> str | None:
+        propria = os.path.join(self.path, "_capa.jpg")       # escolhida à mão (capa_manual.py)
+        if os.path.isfile(propria):
+            return propria
         return next((v.capa for v in self.volumes if v.capa), None)
 
     @property

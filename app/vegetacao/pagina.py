@@ -609,6 +609,37 @@ class VegetacaoPage(QWidget):
             f.write(jpg)
         self.rescan()
 
+    def choose_cover(self, c, v=None):
+        """Botão direito › Escolher capa…: um PDF (vale a 1ª página) ou uma imagem (capa_manual.py)."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from . import capa_manual
+        alvo = f"do {v.rotulo}" if v is not None else f"da coleção {c.nome}"
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Capa {alvo}", capa_manual.sugestao_pasta(c, v),
+            "PDF ou imagem (*.pdf *.jpg *.jpeg *.png *.bmp *.webp *.tif *.tiff)")
+        if not path:
+            return
+        try:
+            dest, antigas = segundo_plano.wait(
+                self, "Preparando a capa…", lambda: capa_manual.aplicar(path, c.path, v.nome if v is not None else None))
+        except (ValueError, OSError) as e:
+            QMessageBox.information(self, "Capa", f"Não foi possível usar este arquivo: {e}.")
+            return
+        if v is not None:
+            v.capa = dest
+        try:
+            self.w.thumbs.reload([dest])
+        except Exception:  # noqa: BLE001
+            pass
+        msg = f"Capa {alvo} trocada."
+        if antigas:
+            msg += " A anterior foi para _DESCARTADOS."
+        try:
+            self.w.statusBar().showMessage(msg, 8000)
+        except Exception:  # noqa: BLE001
+            pass
+        self.rescan()
+
     # ------------------------------------------------------------------ navegação
     def _crumb(self, link: str):
         w = self.where
@@ -785,6 +816,7 @@ class VegetacaoPage(QWidget):
         if "col" in r:
             c = r["col"]
             m.addAction("Mostrar na pasta", lambda: show_in_folder(c.path))
+            m.addAction("Escolher capa…", lambda: self.choose_cover(c))
             m.addSeparator()
             m.addAction("Tirar da Vegetação (não apaga nada)", lambda: self.remove_collection(c))
         elif "arq" in r:
@@ -796,6 +828,7 @@ class VegetacaoPage(QWidget):
                 m.addAction("Abrir o PDF do volume", lambda: open_file(v.pdf))
             if not v.capa and v.pdf:
                 m.addAction("Criar capa a partir do PDF", lambda: self.cover_from_pdf(c, v))
+            m.addAction("Escolher capa…", lambda: self.choose_cover(c, v))
             m.addSeparator()
             if self._can_undo(v):
                 m.addAction("Desfazer organização…", lambda: self.undo_volume(v))
