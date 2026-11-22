@@ -2,6 +2,12 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.21
+- **Vegetação: proxy automático.** Com **Proxy** escolhido em *Versão a importar*, arraste um arquivo que ainda não tem proxy e escolha **Merge**. Vai a malha e, logo depois, o 3ds Max cria o Corona Proxy: salva o `.cproxy` e um `.max` pequeno, com o mesmo nome da malha, na pasta **- Proxy** do volume, e põe o proxy na cena no lugar da malha. Use **Atualizar** e o cartão passa a mostrar **mesh + proxy**. Dali em diante, o arrasto leva o proxy.
+- Precisa do Corona. Arquivos com GrowFX ou Forest Pack continuam como malha. Se algo der errado, a malha fica na cena como estava, e o motivo aparece no painel e no MAXScript Listener (F11).
+- Se o 3ds Max estava aberto durante a atualização, feche e abra de novo uma vez.
+- **Organizar volume…** agora aceita volumes que já têm uma pasta de proxies, e **Desfazer organização** leva junto os proxies criados depois de organizar.
+
 ## 2.0.20
 - **Vegetação: Receber coleções…** (no início da aba, ao lado de Adicionar coleção). Mostra o que você baixou na pasta de entrada (`F:\COLECOES\_ENTRADAS`, ou a que você escolher) agrupado por volume: as partes do rar e o PDF do mesmo volume vão juntos. Para cada volume, o Archiva sugere a coleção (Maxtree ou Globe Plants) e o nome da pasta no padrão (`Maxtree - Plant Models Vol 160`, `Globe Plants – Bundle 70`). Você confere, troca se quiser e clica em **Mover**.
 - O volume chega na coleção ainda compactado; abra-o e use **Extrair volume…** e depois **Organizar volume…**.
