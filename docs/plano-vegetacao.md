@@ -161,6 +161,9 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 ## 2.0.31: erro 'vol' ao abrir uma planta favorita
 - Causa: em `go()` a busca é escondida antes de `model.set_rows`; com o foco nela, o foco pula para a grade, que escolhe o 1º cartão do nível anterior e `_select` (já com `where = especie`) lê `r["vol"]` de um cartão de coleção/favorito. Correção: `_select` ignora cartões sem `"arq"`. Reproduzido e testado offscreen (foco na busca + clique na faixa de Favoritos).
 
+## 2.0.32: ícone do Forest/Scatter com 2x a planta
+- Pedido do usuário: o objeto vinha muito pequeno. `espalhar.tamanhoIcone`: maior medida da caixa da planta (x, y ou z) × 2 em `iconSize` (Chaos Scatter) / `iconsize` (Forest Pack); nomes tirados das cadeias dos plugins instalados. **Não testado dentro do Max**: o Listener mostra "icone: <propriedade> = <valor>" (undefined se nenhum nome serviu).
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.

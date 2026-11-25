@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.32
+- **Vegetação: o Forest Pack e o Chaos Scatter criados ao soltar a planta vêm com o ícone maior**, com 2 vezes a maior medida da planta, e ficam fáceis de ver e selecionar na viewport. O MAXScript Listener (F11) mostra o tamanho usado.
+
 ## 2.0.31
 - **Vegetação: clicar numa planta favorita não dá mais o erro "'vol'".** Quando o cursor estava na caixa de busca, abrir uma planta pela faixa de Favoritos (ou por um resultado da busca) mostrava "Ocorreu um erro inesperado: 'vol'". Agora a planta abre normalmente, com o primeiro arquivo já selecionado no painel.
 

@@ -55,6 +55,20 @@ FUNCOES = r"""
 		feito
 	)
 
+	-- 2.0.32: o icone do Forest/Scatter com 2x o tamanho da planta (a maior medida dela), para ficar visivel
+	fn tamanhoIcone obj fonte =
+	(
+		local d = try (fonte.max - fonte.min) catch ([0, 0, 0])
+		local t = amax #(d.x, d.y, d.z)
+		if t > 0 then
+		(
+			local usado = tentarProp obj #(#iconSize, #iconsize, #icon_size) (t * 2.0)
+			format "   icone: % = % (2x a planta, que mede %)\n" usado (t * 2.0) t
+			usado
+		)
+		else undefined
+	)
+
 	fn criarForest fonte pt nome =
 	(
 		local f = undefined
@@ -88,6 +102,7 @@ FUNCOES = r"""
 				if classOf g == Array and g.count >= 1 do try (f.geomlist = #(2)) catch ()
 				f.name = uniqueName ("Archiva Forest " + nome + " ")
 				if pt != undefined do f.pos = pt
+				tamanhoIcone f fonte
 				try (fonte.layer.addNode f) catch ()
 				format "   Forest: itens = %, nomes = %, geomlist = %\n" (try (f.cobjlist) catch ("?")) (try (f.namelist) catch ("?")) (try (f.geomlist) catch ("?"))
 			)
@@ -121,6 +136,7 @@ FUNCOES = r"""
 				tentarProp s #(#modelFrequencies) #(100.0)
 				s.name = uniqueName ("Archiva Scatter " + nome + " ")
 				if pt != undefined do s.pos = pt
+				tamanhoIcone s fonte
 				try (fonte.layer.addNode s) catch ()
 				format "   Scatter: modelos em % = %\n" usado (try (getProperty s usado) catch ("?"))
 			)
