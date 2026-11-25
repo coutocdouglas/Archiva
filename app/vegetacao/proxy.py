@@ -40,6 +40,7 @@ PACKAGE_NAME = "ArchivaProxy"
 PEDIDO = "proxy_pendente.txt"          # da 2.0.21; só é apagado se sobrou
 RESULTADO = "proxy_resultado.txt"
 SOLTAR = "arrastar_vegetacao.ms"
+LOG = "arrastar_vegetacao_log.txt"     # uma linha por etapa do arrasto (onde parou, se o Max travar)
 
 
 # ----------------------------------------------------------------------------- onde fica o proxy
@@ -105,6 +106,21 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 	local pastas = #($pastas)
 	local espalhar = "$espalhar"
 	local planta = "$planta"
+	global ArchivaLogArrasto = @"$registro"
+
+	-- uma linha por etapa, gravada na hora: se o Max travar, a ultima linha diz onde parou
+	fn logar texto =
+	(
+		try
+		(
+			local fs = openFile ArchivaLogArrasto mode:"a"
+			if fs == undefined do fs = createFile ArchivaLogArrasto
+			format "% %\n" localTime texto to:fs
+			close fs
+		)
+		catch ()
+		ok
+	)
 
 	fn responder resposta tipo malha texto =
 	(
@@ -141,25 +157,73 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 		(matchPattern c pattern:"*GrowFX*") or (matchPattern c pattern:"*Forest*")
 	)
 
-	-- texturas e proxies que faltam: procura o arquivo pelo nome nas pastas do volume
+	-- "\\servidor\pasta" de um caminho de rede ("" se nao for de rede)
+	fn raizRede p =
+	(
+		if (substring p 1 2) != "\\\\" then ""
+		else
+		(
+			local partes = filterString p "\\"
+			if partes.count >= 2 then ("\\\\" + partes[1] + "\\" + partes[2]) else ""
+		)
+	)
+
+	-- doesFileExist com memoria: cada caminho e conferido uma vez, e um servidor que nao responde e
+	-- conferido uma vez so (cada caminho de rede fora do ar pode levar dezenas de segundos)
+	fn existe cur memo mortos =
+	(
+		local i = findItem memo[1] cur
+		if i > 0 then memo[2][i]
+		else
+		(
+			local r = raizRede cur
+			local sim = false
+			if r == "" or (findItem mortos r) == 0 do
+			(
+				sim = doesFileExist cur
+				if not sim and r != "" do
+				(
+					local raizOk = try (doesDirectoryExist r) catch (doesFileExist r)
+					if not raizOk do (append mortos r; logar ("   servidor fora do ar, ignorado: " + r))
+				)
+			)
+			append memo[1] cur
+			append memo[2] sim
+			sim
+		)
+	)
+
+	-- texturas e proxies que faltam NO QUE ENTROU NO MERGE: procura o arquivo pelo nome nas pastas do volume.
+	-- (ate a 2.0.27 olhava a cena inteira: numa cena cheia, com caminhos de rede fora do ar, o Max parecia travar)
 	fn religar novos pastas =
 	(
 		local classes = #()
 		for c in #(BitmapTexture, CoronaBitmap, VRayBitmap, VRayHDRI, CProxy, CoronaProxy, VRayProxy) where c != undefined do appendIfUnique classes c
+		local vistos = #()
 		local alvos = #()
-		for c in classes do for t in (getClassInstances c) do
+		for o in novos do for c in classes do
 		(
-			if hasProperty t #filename then append alvos #(t, #filename)
-			else if hasProperty t #HDRIMapName do append alvos #(t, #HDRIMapName)
+			-- o no (malha, modificadores) e, por garantia, o material direto
+			local lista = try (getClassInstances c target:o) catch #()
+			if o.material != undefined do join lista (try (getClassInstances c target:o.material) catch #())
+			for t in lista where (findItem vistos t) == 0 do
+			(
+				append vistos t
+				if hasProperty t #filename then append alvos #(t, #filename)
+				else if hasProperty t #HDRIMapName do append alvos #(t, #HDRIMapName)
+			)
 		)
 		for o in novos where (matchPattern ((classOf o) as string) pattern:"*Proxy*") and (hasProperty o #filename) do
 			append alvos #(o, #filename)
+		logar ("   religar: " + (alvos.count as string) + " textura(s)/proxy(s) do que entrou")
+		local memo = #(#(), #())
+		local mortos = #()
 		local religadas = 0
 		local faltando = #()
 		for par in alvos do
 		(
 			local cur = try (getProperty par[1] par[2]) catch (undefined)
-			if classOf cur == String and cur != "" and not (doesFileExist cur) do
+			if classOf cur == String and cur != "" and not (existe cur memo mortos) do
 			(
 				local nomeArq = filenameFromPath cur
 				local achou = undefined
@@ -172,7 +236,7 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 				else appendIfUnique faltando nomeArq
 			)
 		)
-		try (ATSOps.Refresh()) catch ()
+		if religadas > 0 do try (ATSOps.Refresh()) catch ()
 		#(religadas, faltando)
 	)
 
@@ -202,12 +266,14 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 				local f = base + ".cproxy"
 				local k = 2
 				while doesFileExist f do (f = base + "_" + (k as string) + ".cproxy"; k += 1)
+				logar ("   proxy " + (i as string) + "/" + (geo.count as string) + ": " + n.name + " (Corona gravando " + f + ")")
 				local p = CProxy()
 				local okp = false
 				local e1 = ""
 				-- Corona: <integer>fromScene <node>proxy <node>node <filename>filename (um objeto por vez)
 				try (CProxy.ProxyFp.fromScene p n f; okp = true) catch (e1 = getCurrentException())
 				if not okp do try (CProxy.ProxyFp.fromScene p #(n) f; okp = true) catch ()
+				logar ("   proxy " + (i as string) + ": Corona respondeu (" + (if okp then "ok" else "erro") + ")")
 				if okp and (doesFileExist f) then
 				(
 					append arquivos f
@@ -252,7 +318,9 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 				delete originais
 				local salvar = for o in novos where (isValidNode o) collect o
 				join salvar proxies
+				logar ("   salvando o .max do proxy: " + alvo)
 				saveNodes salvar alvo quiet:true
+				logar "   .max do proxy salvo"
 				select salvar
 				if doesFileExist alvo then
 					#(true, "proxy criado: " + alvo + " (" + (proxies.count as string) + " objeto(s), " + (arquivos.count as string) + " .cproxy). Use Atualizar no Archiva.")
@@ -263,9 +331,14 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 	)
 
 $espalhar_fns
+	local silencioAntes = try (GetSilentMode()) catch (false)
+	try (SetSilentMode true) catch ()     -- nenhuma janela de aviso no meio do arrasto (ninguem conseguiria responder)
+	try (deleteFile ArchivaLogArrasto) catch ()
+	logar ("inicio: " + nome + " | " + arquivo + " | cena com " + (objects.count as string) + " objeto(s)")
 	try
 	(
 		format "\n-- Archiva: %\n" nome
+		format "   etapas gravadas em: %\n" ArchivaLogArrasto
 		if not (doesFileExist arquivo) then
 		(
 			format "   arquivo nao encontrado: %\n" arquivo
@@ -288,9 +361,11 @@ $espalhar_fns
 			local h = 0
 			for o in objects do (local x = o.inode.handle; if x > h do h = x)
 			local okm = false
+			logar "merge: comecando"
 			try (mergeMAXFile arquivo #select #autoRenameDups #renameMtlDups #noRedraw quiet:true; okm = true) catch ()
 			if not okm do try (mergeMAXFile arquivo #select #autoRenameDups quiet:true; okm = true) catch ()
 			local novos = for o in objects where o.inode.handle > h collect o
+			logar ("merge: terminou, " + (novos.count as string) + " objeto(s) entraram")
 			if novos.count == 0 then
 			(
 				format "   o Merge nao trouxe nenhum objeto.\n"
@@ -314,7 +389,9 @@ $espalhar_fns
 				)
 				for o in novos where classOf o == CProxy do malhaCompleta o      -- proxy ja pronto: mostra a malha
 				select novos
+				logar "religar: comecando"
 				local rl = religar novos pastas
+				logar ("religar: terminou, " + (rl[1] as string) + " religado(s), " + (rl[2].count as string) + " faltando")
 				format "   % objeto(s) no Merge; % arquivo(s) religado(s) para a pasta do volume.\n" novos.count rl[1]
 				if rl[2].count > 0 do
 				(
@@ -323,7 +400,9 @@ $espalhar_fns
 				)
 				if alvo != "" do
 				(
+					logar "proxy: comecando"
 					local rp = criarProxy novos alvo
+					logar ("proxy: " + rp[2])
 					format "   %\n" rp[2]
 					responder resposta (if rp[1] then "ok" else "erro") malha rp[2]
 				)
@@ -332,9 +411,11 @@ $espalhar_fns
 				(
 					local fontes = if alvo != "" then (for o in selection where (isValidNode o) collect o) else novos
 					local re = #(false, "")
+					logar ("espalhamento: comecando (" + espalhar + ")")
 					try (re = criarEspalhamento espalhar fontes pt planta)
 					catch (re = #(false, "erro ao criar o " + espalhar + ": " + (getCurrentException()) + ". Ficou so o modelo."))
 					format "   %\n" re[2]
+					logar ("espalhamento: " + re[2])
 				)
 			)
 		)
@@ -343,8 +424,11 @@ $espalhar_fns
 	(
 		local e = getCurrentException()
 		format "-- Archiva: erro no arrasto: %\n" e
+		logar ("erro: " + (e as string))
 		if alvo != "" do responder resposta "erro" malha ("erro no 3ds Max: " + (e as string))
 	)
+	try (SetSilentMode silencioAntes) catch ()
+	logar "fim"
 	redrawViews()
 	ok
 )
@@ -373,6 +457,7 @@ def script_soltar(arquivo: str, pastas: list[str], nome: str, criar_proxy_de: st
         "$malha": _ms_verbatim(os.path.normpath(criar_proxy_de) if criar_proxy_de else ""),
         "$nome": _ms_string(nome),
         "$resposta": _ms_verbatim(_path(RESULTADO) or ""),
+        "$registro": _ms_verbatim(_path(LOG) or ""),
         "$pastas": lista,
         "$espalhar_fns": espalhar.FUNCOES,
         "$espalhar": espalhar.valido(espalhar_modo),

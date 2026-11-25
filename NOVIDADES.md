@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.28
+- **Vegetação: o 3ds Max não deve mais travar ao soltar uma planta numa cena cheia.** Ao conferir as texturas, o Archiva olhava a cena inteira, inclusive texturas e proxies que já estavam nela. Com caminhos de rede fora do ar, o Max ficava parado por muito tempo. Agora ele confere só o que acabou de entrar. Cada servidor que não responde é testado uma vez só, e as texturas que já estavam na sua cena não são mais mexidas.
+- Durante o arrasto, o 3ds Max não abre janelas de aviso, que ninguém conseguiria responder no meio dele.
+- **Registro de etapas do arrasto:** cada etapa (Merge, texturas, proxy, Forest/Scatter) é gravada na hora em `%LOCALAPPDATA%\Archiva\arrastar_vegetacao_log.txt`. Se o Max ainda travar, a última linha desse arquivo mostra onde ele parou. Mande esse arquivo.
+
 ## 2.0.27
 - **Vegetação: criar um Forest Pack ou um Chaos Scatter ao soltar a planta.** No painel da planta há a opção nova **Ao soltar, criar também**: *Nada*, *Forest* ou *Scatter*. Com Forest ou Scatter, a planta entra na cena como sempre (Mesh ou Proxy) e, junto dela, nasce um objeto Forest Pack ou Chaos Scatter **vazio**, já com a planta como item. Escolha a superfície ou a área no painel do plugin. Com Proxy, o próprio proxy vira o item (cena mais leve).
 - A escolha fica guardada. O resumo aparece no MAXScript Listener (F11). Na primeira vez de cada sessão do 3ds Max, o Listener mostra também as propriedades do objeto criado; se algo não ficar certo, mande esse texto.

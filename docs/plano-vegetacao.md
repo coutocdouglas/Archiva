@@ -140,6 +140,12 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Testado sem o Max: script gerado com parênteses e aspas equilibrados nos 3 modos; sem Forest/Scatter o script é o da 2.0.26 só com linhas a mais (nenhuma removida); testes da 2.0.24 (arrasto, proxy, capas) e da 2.0.26 (favoritos/tags, aba Tags da Biblioteca idêntica) passam; arrasto com o mouse levando "forest"/"scatter".
 - **Não testado por mim: dentro do 3ds Max.** No primeiro arrasto, conferir no Listener se o Forest/Scatter foi criado com a planta e pedir o texto das propriedades se não.
 
+## Correção 2.0.28: Max travando ao soltar com Proxy numa cena cheia
+- Relato: com Proxy escolhido, soltar numa cena que já tem coisas trava o Max (precisa derrubar). Em cena vazia funciona.
+- Causa provável (sem Max para conferir): `religar` usava `getClassInstances` na cena inteira e `doesFileExist` em cada caminho que falta (caminhos de rede fora do ar levam dezenas de segundos cada), mais `ATSOps.Refresh()` na cena toda. Também religava texturas da cena do usuário.
+- Agora: `getClassInstances c target:<nó novo>` (+ o material), memória por caminho, servidor `\\srv\share` fora do ar é testado uma vez, `ATSOps.Refresh` só se religou algo. `SetSilentMode true` durante o arrasto (restaura depois). Log com uma linha por etapa em `%LOCALAPPDATA%\Archiva\arrastar_vegetacao_log.txt` (`proxy.LOG`).
+- **Não testado dentro do Max.** Se travar de novo, pedir a última linha do log.
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.
