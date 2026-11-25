@@ -123,7 +123,7 @@ class SeletorVersao(QWidget):
             text = "Vai o proxy (Corona Proxy, leve na cena)."
         elif self.preferida == arrastar.PROXY and proxy.pode_criar(a):
             text = ("Ainda não há proxy: vai a malha e, ao soltar, o 3ds Max cria o proxy na pasta "
-                    "\"- Proxy\" do volume (precisa do Corona). Depois use Atualizar.")
+                    "\"- Proxy\" do volume (precisa do Corona). O selo muda para mesh + proxy sozinho.")
             r = proxy.resultado(a.path)
             if r and r[0] == "erro":
                 text += f"\nÚltima tentativa: {r[1]}"
@@ -141,7 +141,11 @@ def start_drag(page, grid) -> None:
     if not r or "arq" not in r:
         return
     vol, esp, arq = r["vol"], r["esp"], r["arq"]
-    path, msg = arrastar.preparar(vol, esp, arq, page.side.versao.preferida, page.side.versao.espalhar)
+    from . import proxy
+    preferida = page.side.versao.preferida
+    criar = (preferida == arrastar.PROXY and arrastar.versao_efetiva(arq, preferida) == arrastar.MESH
+             and proxy.pode_criar(arq))
+    path, msg = arrastar.preparar(vol, esp, arq, preferida, page.side.versao.espalhar)
     try:
         page.w.statusBar().showMessage(msg, 10000)
     except Exception:  # noqa: BLE001
@@ -157,3 +161,6 @@ def start_drag(page, grid) -> None:
         drag.setPixmap(pix.scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         drag.setHotSpot(QPoint(48, 48))
     drag.exec(Qt.CopyAction)
+    if criar:       # 2.0.29: o selo "mesh + proxy" aparece sozinho quando o Max gravar o proxy
+        from . import vigia_proxy
+        vigia_proxy.vigiar(page, arq.path)

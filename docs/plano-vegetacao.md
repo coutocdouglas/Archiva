@@ -146,6 +146,12 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Agora: `getClassInstances c target:<nó novo>` (+ o material), memória por caminho, servidor `\\srv\share` fora do ar é testado uma vez, `ATSOps.Refresh` só se religou algo. `SetSilentMode true` durante o arrasto (restaura depois). Log com uma linha por etapa em `%LOCALAPPDATA%\Archiva\arrastar_vegetacao_log.txt` (`proxy.LOG`).
 - **Não testado dentro do Max.** Se travar de novo, pedir a última linha do log.
 
+- 2.0.28 confirmado pelo usuário: não trava mais.
+
+## 2.0.29: selo "mesh + proxy" sem Atualizar
+- `app/vegetacao/vigia_proxy.py`: depois de um arrasto que pediu proxy (`arrastar_ui.start_drag`, após `drag.exec`), confere `proxy.destino` a cada 2 s (até 10 min, ou até `proxy_resultado.txt` dizer "erro"). Quando o .max aparece: `arq.proxy` nos Arquivo de `page.cols`, `save_index`, e redesenha a espécie mantendo a seleção e a rolagem.
+- Testado offscreen numa cópia do esqueleto Maxtree: selo e painel mudam, índice salvo, vigia só começa com Proxy.
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.

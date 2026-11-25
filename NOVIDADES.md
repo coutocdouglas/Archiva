@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.29
+- **Vegetação: o selo "mesh + proxy" aparece sozinho.** Quando você solta uma planta com **Proxy** e o 3ds Max cria o proxy pela primeira vez, o cartão muda para **mesh + proxy** e o painel passa a mostrar "Vai o proxy", sem precisar clicar em Atualizar. O Archiva fica de olho na pasta **- Proxy** por até 10 minutos depois do arrasto.
+
 ## 2.0.28
 - **Vegetação: o 3ds Max não deve mais travar ao soltar uma planta numa cena cheia.** Ao conferir as texturas, o Archiva olhava a cena inteira, inclusive texturas e proxies que já estavam nela. Com caminhos de rede fora do ar, o Max ficava parado por muito tempo. Agora ele confere só o que acabou de entrar. Cada servidor que não responde é testado uma vez só, e as texturas que já estavam na sua cena não são mais mexidas.
 - Durante o arrasto, o 3ds Max não abre janelas de aviso, que ninguém conseguiria responder no meio dele.
