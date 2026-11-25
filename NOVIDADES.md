@@ -2,6 +2,9 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.31
+- **Vegetação: clicar numa planta favorita não dá mais o erro "'vol'".** Quando o cursor estava na caixa de busca, abrir uma planta pela faixa de Favoritos (ou por um resultado da busca) mostrava "Ocorreu um erro inesperado: 'vol'". Agora a planta abre normalmente, com o primeiro arquivo já selecionado no painel.
+
 ## 2.0.30
 - **Vegetação: texturas religadas de novo em todos os objetos.** Na 2.0.28, para não travar, a conferência das texturas passou a olhar só o que entrou no Merge, mas o 3ds Max nem sempre mostrava o caminho do objeto até o mapa, e alguns ficavam sem textura. Agora entram também todos os mapas que nasceram no Merge, sem voltar a conferir a cena inteira, que era o que travava.
 - A procura também vai às outras pastas do volume, depois das pastas Maps, e aceita o mesmo nome com outra extensão (o .max pede `.png` e a pasta tem `.jpg`, por exemplo).

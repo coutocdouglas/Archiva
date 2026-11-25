@@ -158,6 +158,9 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - Procura também com outra extensão (mesmo nome) e, em `arrastar.pastas_texturas`, as outras pastas do volume depois das Maps (antes: só as Maps quando havia Maps).
 - Log lista cada mapa ainda faltando. **Não testado dentro do Max**: se faltar de novo, pedir as linhas "faltando" do log.
 
+## 2.0.31: erro 'vol' ao abrir uma planta favorita
+- Causa: em `go()` a busca é escondida antes de `model.set_rows`; com o foco nela, o foco pula para a grade, que escolhe o 1º cartão do nível anterior e `_select` (já com `where = especie`) lê `r["vol"]` de um cartão de coleção/favorito. Correção: `_select` ignora cartões sem `"arq"`. Reproduzido e testado offscreen (foco na busca + clique na faixa de Favoritos).
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.

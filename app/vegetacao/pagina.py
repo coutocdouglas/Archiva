@@ -816,6 +816,10 @@ class VegetacaoPage(QWidget):
         if self.where[0] != "especie" or not ix.isValid():
             return
         r = ix.data(Qt.UserRole)
+        if not r or "arq" not in r:
+            # 2.0.31: em go() a busca some antes de trocar os cartões; o foco pula para a grade e ela escolhe
+            # um cartão do nível anterior (favorito, coleção…). go() seleciona o primeiro arquivo logo depois.
+            return
         self.side.show_file(r["vol"], r["esp"], r["arq"])
 
     def go_back(self):
