@@ -152,6 +152,12 @@ Respostas do usuário às perguntas de `docs/etapa0-conclusoes.md`. "Apagar" aqu
 - `app/vegetacao/vigia_proxy.py`: depois de um arrasto que pediu proxy (`arrastar_ui.start_drag`, após `drag.exec`), confere `proxy.destino` a cada 2 s (até 10 min, ou até `proxy_resultado.txt` dizer "erro"). Quando o .max aparece: `arq.proxy` nos Arquivo de `page.cols`, `save_index`, e redesenha a espécie mantendo a seleção e a rolagem.
 - Testado offscreen numa cópia do esqueleto Maxtree: selo e painel mudam, índice salvo, vigia só começa com Proxy.
 
+## 2.0.30: objetos sem mapa depois da 2.0.28
+- 2.0.29 confirmado pelo usuário (selo muda sozinho). Relato novo: alguns objetos entram sem mapa.
+- Provável regressão da 2.0.28: `getClassInstances c target:<nó>` não alcança todos os mapas. Agora `religar` junta também os mapas com `getHandleByAnim` maior que o maior handle de antes do Merge (`maiorHandle`, só lê, não confere arquivo), além do `target:`.
+- Procura também com outra extensão (mesmo nome) e, em `arrastar.pastas_texturas`, as outras pastas do volume depois das Maps (antes: só as Maps quando havia Maps).
+- Log lista cada mapa ainda faltando. **Não testado dentro do Max**: se faltar de novo, pedir as linhas "faltando" do log.
+
 ## Mudanças pedidas depois da etapa 3 (2.0.19, entregue)
 - `_DESCARTADOS` **por coleção**: `<coleção>\_DESCARTADOS\<nome do volume>\…` (antes: por dentro de cada volume). O diário (`archiva.json`) guarda `descarte` e todos os caminhos absolutos; volumes organizados na 2.0.16–2.0.18 (descartes por dentro) desfazem normalmente (testado com o código antigo).
 - Janela de organizar (`conferencia.py`) refeita no estilo do programa.

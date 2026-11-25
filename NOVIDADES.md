@@ -2,6 +2,11 @@
 
 Cada versão tem uma seção `## x.y.z`. O texto da seção aparece na página da versão no GitHub e no aviso de atualização.
 
+## 2.0.30
+- **Vegetação: texturas religadas de novo em todos os objetos.** Na 2.0.28, para não travar, a conferência das texturas passou a olhar só o que entrou no Merge, mas o 3ds Max nem sempre mostrava o caminho do objeto até o mapa, e alguns ficavam sem textura. Agora entram também todos os mapas que nasceram no Merge, sem voltar a conferir a cena inteira, que era o que travava.
+- A procura também vai às outras pastas do volume, depois das pastas Maps, e aceita o mesmo nome com outra extensão (o .max pede `.png` e a pasta tem `.jpg`, por exemplo).
+- O registro do arrasto (`%LOCALAPPDATA%\Archiva\arrastar_vegetacao_log.txt`) agora lista os mapas que continuam faltando.
+
 ## 2.0.29
 - **Vegetação: o selo "mesh + proxy" aparece sozinho.** Quando você solta uma planta com **Proxy** e o 3ds Max cria o proxy pela primeira vez, o cartão muda para **mesh + proxy** e o painel passa a mostrar "Vai o proxy", sem precisar clicar em Atualizar. O Archiva fica de olho na pasta **- Proxy** por até 10 minutos depois do arrasto.
 

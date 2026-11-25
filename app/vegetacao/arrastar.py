@@ -54,7 +54,7 @@ def _in_maps(parts: list[str]) -> bool:
 
 def pastas_texturas(vol_path: str, max_path: str | None = None) -> list[str]:
     """Pastas onde o Max deve procurar as texturas: a do .max, a do proxy e as pastas Maps do volume (com as
-    subpastas). Se o volume não tem pasta Maps, todas as pastas dele (texturas soltas ao lado das malhas).
+    subpastas) e, depois delas, as outras pastas do volume (texturas soltas ao lado das malhas).
     Pula _DESCARTADOS, "- Outros" e extrações em andamento, como o leitor."""
     vol_path = os.path.normpath(vol_path)
     maps: list[str] = []
@@ -68,7 +68,7 @@ def pastas_texturas(vol_path: str, max_path: str | None = None) -> list[str]:
     out: list[str] = []
     if max_path:
         out.append(os.path.dirname(os.path.normpath(max_path)))
-    out += maps or others
+    out += maps + others      # 2.0.30: as outras pastas do volume também, depois das Maps (textura fora da Maps)
     seen, uniq = set(), []
     for d in out:
         k = os.path.normcase(d)

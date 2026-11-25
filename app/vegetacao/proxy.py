@@ -195,12 +195,39 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 
 	-- texturas e proxies que faltam NO QUE ENTROU NO MERGE: procura o arquivo pelo nome nas pastas do volume.
 	-- (ate a 2.0.27 olhava a cena inteira: numa cena cheia, com caminhos de rede fora do ar, o Max parecia travar)
-	fn religar novos pastas =
+	fn classesMapa =
 	(
 		local classes = #()
 		for c in #(BitmapTexture, CoronaBitmap, VRayBitmap, VRayHDRI, CProxy, CoronaProxy, VRayProxy) where c != undefined do appendIfUnique classes c
+		classes
+	)
+
+	-- o maior "handle" das texturas/proxies da cena: o que o Merge criar vem depois dele (so le, nao confere arquivo)
+	fn maiorHandle =
+	(
+		local h = 0
+		for c in classesMapa() do for t in (getClassInstances c) do
+			try (local x = getHandleByAnim t; if x > h do h = x) catch ()
+		h
+	)
+
+	fn religar novos pastas hAntes =
+	(
+		local classes = classesMapa()
 		local vistos = #()
 		local alvos = #()
+		-- 1) tudo o que nasceu no Merge (handle maior que o de antes): nao depende de o Max achar o caminho do no ate o mapa
+		if hAntes != undefined do for c in classes do for t in (getClassInstances c) do
+		(
+			local x = try (getHandleByAnim t) catch (0)
+			if x > hAntes and (findItem vistos t) == 0 do
+			(
+				append vistos t
+				if hasProperty t #filename then append alvos #(t, #filename)
+				else if hasProperty t #HDRIMapName do append alvos #(t, #HDRIMapName)
+			)
+		)
+		-- 2) e, por garantia, o que os objetos novos usam
 		for o in novos do for c in classes do
 		(
 			-- o no (malha, modificadores) e, por garantia, o material direto
@@ -231,6 +258,17 @@ SOLTAR_SCRIPT = r"""-- Archiva: arrasto da Vegetacao. Gerado pelo Archiva a cada
 				(
 					local cand = d + "\\" + nomeArq
 					if doesFileExist cand do achou = cand
+				)
+				-- mesmo nome com outra extensao (o .max pede .png e a pasta tem .jpg, por exemplo)
+				if achou == undefined do
+				(
+					local stem = getFilenameFile nomeArq
+					local exts = #(".jpg", ".jpeg", ".png", ".tif", ".tiff", ".tga", ".exr", ".bmp")
+					for d in pastas while achou == undefined do for x in exts while achou == undefined do
+					(
+						local cand = d + "\\" + stem + x
+						if doesFileExist cand do achou = cand
+					)
 				)
 				if achou != undefined then (try (setProperty par[1] par[2] achou; religadas += 1) catch ())
 				else appendIfUnique faltando nomeArq
@@ -361,6 +399,7 @@ $espalhar_fns
 			local h = 0
 			for o in objects do (local x = o.inode.handle; if x > h do h = x)
 			local okm = false
+			local hMapas = try (maiorHandle()) catch (undefined)
 			logar "merge: comecando"
 			try (mergeMAXFile arquivo #select #autoRenameDups #renameMtlDups #noRedraw quiet:true; okm = true) catch ()
 			if not okm do try (mergeMAXFile arquivo #select #autoRenameDups quiet:true; okm = true) catch ()
@@ -390,8 +429,9 @@ $espalhar_fns
 				for o in novos where classOf o == CProxy do malhaCompleta o      -- proxy ja pronto: mostra a malha
 				select novos
 				logar "religar: comecando"
-				local rl = religar novos pastas
+				local rl = religar novos pastas hMapas
 				logar ("religar: terminou, " + (rl[1] as string) + " religado(s), " + (rl[2].count as string) + " faltando")
+				for n in rl[2] do logar ("   faltando: " + n)
 				format "   % objeto(s) no Merge; % arquivo(s) religado(s) para a pasta do volume.\n" novos.count rl[1]
 				if rl[2].count > 0 do
 				(
